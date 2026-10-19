@@ -57,6 +57,10 @@ removes saved connections.
 - **Query bar:** Filter, Project, Sort and Limit in a monospace font with a
   green **Find** button and **Reset**. Accepts Extended JSON and shell
   syntax such as `{ _id: ObjectId('…'), createdAt: { $gt: ISODate('2024-01-01') } }`.
+  Braces, brackets and quotes close themselves, the first character typed
+  is wrapped in `{ }`, and a row of chips suggests field names (sampled from
+  the collection), operators such as `$gt` and `$in` under a field, and
+  helpers like `ObjectId('')` and `ISODate('')` in value position.
 - **Pagination built for big collections:** pages of 10, 25, 50 or 100
   with a label like `1 – 25 of ~2.4M` and previous/next buttons. Only the
   current page is kept in memory.

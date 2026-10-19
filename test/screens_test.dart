@@ -195,6 +195,21 @@ void main() {
     await tester.pageBack();
     await tester.pumpAndSettle();
 
+    // Typing in the filter closes braces and suggests fields.
+    final filter = find.byType(TextField).first;
+    await tester.tap(filter);
+    await tester.pump();
+    await tester.enterText(filter, '{ cus');
+    await tester.pumpAndSettle();
+    expect(find.widgetWithText(ActionChip, 'customer.name'), findsOneWidget);
+    await shot(tester, '11b-suggestions');
+    await tester.tap(find.widgetWithText(ActionChip, 'customer.name'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(filter).controller!.text,
+        "{ 'customer.name': ");
+    await tester.enterText(filter, '');
+    await tester.pump();
+
     await tester.tap(find.text('Options'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField).first, '{ paid: true, ');

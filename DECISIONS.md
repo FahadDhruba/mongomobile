@@ -43,6 +43,9 @@ One line per decision: what was decided and why.
 - Dropping a collection requires write mode and typing the collection name, as in Compass.
 - In-app updates use GitHub Releases: the version comes from `--dart-define=APP_VERSION` set by CI, the APK is verified against the release's .sha256 file, and it is installed through FileProvider + the system installer (REQUEST_INSTALL_PACKAGES). Local `dev` builds never offer updates.
 - The automatic update check runs once per launch, can be turned off, and treats any network error as "no update" so it never gets in the way.
+- Query bar assistance uses a chip row under the input rather than a dropdown overlay, because a dropdown fights the on-screen keyboard on phones; chips sit in a TextFieldTapRegion so tapping one keeps the keyboard up.
+- Field suggestions come from a 200-document `$sample` (5 s limit, failures ignored) merged with the fields on the current page; arrays are looked through so `items.sku` is suggested, matching how MongoDB queries dotted paths.
+- Auto-closing only reacts to single-character edits at the cursor; pastes and keyboard word replacements pass through untouched, so it can't corrupt input it doesn't understand.
 
 ## Blockers and fallbacks
 

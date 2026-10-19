@@ -11,11 +11,38 @@ import '../widgets/bson_value.dart';
 import '../widgets/common.dart';
 import '../widgets/document_card.dart';
 import '../widgets/document_table.dart';
+import '../widgets/query_assist.dart';
 import '../widgets/query_bar.dart';
 import 'document_editor_screen.dart';
 import 'export_sheet.dart';
 
 enum DocumentView { list, json, table }
+
+/// Field paths from a random sample of the collection, for query bar
+/// suggestions. Failures (views without $sample, permissions) give none.
+final sampledFieldsProvider =
+    FutureProvider.autoDispose.family<List<String>, Namespace>((ref, ns) async {
+  final client = ref.watch(clientProvider);
+  try {
+    final reply = await client.runCommand(
+      ns.db,
+      {
+        'aggregate': ns.collection,
+        'pipeline': [
+          {
+            r'$sample': {'size': 200}
+          },
+        ],
+        'cursor': {'batchSize': 200},
+      },
+      maxTime: const Duration(seconds: 5),
+    );
+    final batch = ((reply['cursor'] as Map?)?['firstBatch'] as List?) ?? const [];
+    return fieldPathsOf(batch.cast<Map<String, dynamic>>());
+  } on Object {
+    return const [];
+  }
+});
 
 /// The Documents tab: query bar, toolbar, one page of results and the
 /// pagination controls.
@@ -37,6 +64,27 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
   void dispose() {
     _scroll.dispose();
     super.dispose();
+  }
+
+  List<String>? _lastFields;
+  Object? _lastSample;
+  Object? _lastDocs;
+
+  /// Sampled fields plus those on the current page, cached so the query
+  /// bar only rebuilds its suggestions when the inputs change.
+  List<String> _mergeFields(
+      List<String>? sampled, List<Map<String, dynamic>> docs) {
+    if (identical(sampled, _lastSample) &&
+        identical(docs, _lastDocs) &&
+        _lastFields != null) {
+      return _lastFields!;
+    }
+    _lastSample = sampled;
+    _lastDocs = docs;
+    final page = fieldPathsOf(docs);
+    final merged = <String>{...?sampled, ...page}.toList();
+    if (merged.remove('_id')) merged.insert(0, '_id');
+    return _lastFields = merged;
   }
 
   DocumentsController get _ctrl =>
@@ -157,6 +205,10 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
         QueryBar(
           initial: state.query,
           busy: state.loading,
+          fields: _mergeFields(
+            ref.watch(sampledFieldsProvider(widget.namespace)).value,
+            state.documents,
+          ),
           onFind: (q) {
             _toTop();
             _ctrl.run(q);

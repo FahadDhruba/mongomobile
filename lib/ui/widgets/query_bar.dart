@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../state/documents_controller.dart';
 import '../../theme/app_theme.dart';
+import 'query_assist.dart';
 
 /// Compass-style query bar: a Filter input with Find and Reset, and
-/// collapsible Project, Sort and Limit options.
+/// collapsible Project, Sort and Limit options. Brackets and quotes close
+/// themselves, and a row of chips suggests field names, operators and
+/// value helpers for the input being edited.
 class QueryBar extends StatefulWidget {
   const QueryBar({
     super.key,
@@ -12,12 +15,16 @@ class QueryBar extends StatefulWidget {
     required this.onFind,
     required this.onReset,
     this.busy = false,
+    this.fields = const [],
   });
 
   final QuerySpec initial;
   final ValueChanged<QuerySpec> onFind;
   final VoidCallback onReset;
   final bool busy;
+
+  /// Known field paths of the collection, for suggestions.
+  final List<String> fields;
 
   @override
   State<QueryBar> createState() => _QueryBarState();
@@ -33,10 +40,93 @@ class _QueryBarState extends State<QueryBar> {
       widget.initial.limitText.isNotEmpty;
   String? _error;
 
+  final _focus = {
+    for (final f in QueryField.values) f: FocusNode(),
+  };
+  QueryField? _active;
+  List<Suggestion> _suggestions = const [];
+  QueryContext? _context;
+
+  TextEditingController _controllerOf(QueryField f) => switch (f) {
+        QueryField.filter => _filter,
+        QueryField.project => _project,
+        QueryField.sort => _sort,
+      };
+
+  @override
+  void initState() {
+    super.initState();
+    for (final f in QueryField.values) {
+      _focus[f]!.addListener(() => _onFocus(f));
+      _controllerOf(f).addListener(() {
+        if (_active == f) _refreshSuggestions();
+      });
+    }
+  }
+
+  void _onFocus(QueryField f) {
+    if (_focus[f]!.hasFocus) {
+      _active = f;
+      _refreshSuggestions();
+    } else if (_active == f) {
+      setState(() {
+        _active = null;
+        _suggestions = const [];
+      });
+    }
+  }
+
+  void _refreshSuggestions() {
+    final f = _active;
+    if (f == null) return;
+    final value = _controllerOf(f).value;
+    final sel = value.selection;
+    QueryContext? ctx;
+    var next = const <Suggestion>[];
+    if (sel.isValid && sel.isCollapsed) {
+      ctx = analyzeQuery(value.text, sel.baseOffset);
+      if (ctx != null) next = suggestQuery(f, ctx, widget.fields);
+    }
+    if (!_sameLabels(next, _suggestions) || ctx?.start != _context?.start) {
+      setState(() {
+        _suggestions = next;
+        _context = ctx;
+      });
+    } else {
+      _context = ctx;
+    }
+  }
+
+  static bool _sameLabels(List<Suggestion> a, List<Suggestion> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
+  }
+
+  void _apply(Suggestion s) {
+    final f = _active;
+    final ctx = _context;
+    if (f == null || ctx == null) return;
+    final controller = _controllerOf(f);
+    controller.value = applySuggestion(controller.value, ctx, s);
+    _focus[f]!.requestFocus();
+  }
+
+  @override
+  void didUpdateWidget(covariant QueryBar old) {
+    super.didUpdateWidget(old);
+    if (old.fields != widget.fields) _refreshSuggestions();
+  }
+
   @override
   void dispose() {
     for (final c in [_filter, _project, _sort, _limit]) {
       c.dispose();
+    }
+    for (final n in _focus.values) {
+      n.dispose();
     }
     super.dispose();
   }
@@ -67,10 +157,12 @@ class _QueryBarState extends State<QueryBar> {
   }
 
   Widget _field(String label, TextEditingController controller, String hint,
-      {TextInputType? keyboard}) {
+      {TextInputType? keyboard, QueryField? field}) {
     final c = context.colors;
     return TextField(
       controller: controller,
+      focusNode: field == null ? null : _focus[field],
+      inputFormatters: field == null ? null : [QueryInputFormatter()],
       style: monoStyle(context, size: 13),
       keyboardType: keyboard ?? TextInputType.multiline,
       autocorrect: false,
@@ -102,14 +194,19 @@ class _QueryBarState extends State<QueryBar> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _field('Filter', _filter, "{ field: 'value' }"),
+          _field('Filter', _filter, "{ field: 'value' }",
+              field: QueryField.filter),
           if (_options) ...[
             const SizedBox(height: 8),
-            _field('Project', _project, '{ field: 1 }'),
+            _field('Project', _project, '{ field: 1 }',
+                field: QueryField.project),
             const SizedBox(height: 8),
             Row(
               children: [
-                Expanded(flex: 3, child: _field('Sort', _sort, '{ _id: -1 }')),
+                Expanded(
+                    flex: 3,
+                    child: _field('Sort', _sort, '{ _id: -1 }',
+                        field: QueryField.sort)),
                 const SizedBox(width: 8),
                 Expanded(
                   flex: 2,
@@ -118,6 +215,10 @@ class _QueryBarState extends State<QueryBar> {
                 ),
               ],
             ),
+          ],
+          if (_suggestions.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _SuggestionStrip(suggestions: _suggestions, onPick: _apply),
           ],
           if (_error != null) ...[
             const SizedBox(height: 6),
@@ -150,6 +251,47 @@ class _QueryBarState extends State<QueryBar> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// A sideways-scrolling row of suggestion chips.
+class _SuggestionStrip extends StatelessWidget {
+  const _SuggestionStrip({required this.suggestions, required this.onPick});
+
+  final List<Suggestion> suggestions;
+  final ValueChanged<Suggestion> onPick;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    // Taps here count as taps on the text field, so it keeps focus and the
+    // keyboard stays up.
+    return TextFieldTapRegion(
+      child: SizedBox(
+      height: 34,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: suggestions.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 6),
+        itemBuilder: (_, i) {
+          final s = suggestions[i];
+          final color = switch (s.kind) {
+            SuggestionKind.field => c.key,
+            SuggestionKind.operator => c.accent,
+            SuggestionKind.value => c.objectId,
+          };
+          return ActionChip(
+            visualDensity: VisualDensity.compact,
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            backgroundColor: c.background,
+            side: BorderSide(color: c.border),
+            label: Text(s.label, style: monoStyle(context, size: 12.5, color: color)),
+            onPressed: () => onPick(s),
+          );
+        },
+      ),
       ),
     );
   }
