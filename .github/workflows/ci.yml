@@ -69,6 +69,7 @@ jobs:
         run: flutter test
 
       - name: Configure release signing
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -76,16 +77,28 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No signing secrets set; the APK is signed with a debug key."
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret; the APK is signed with a throwaway debug key and will not install over older versions."
+            echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is set but ANDROID_KEYSTORE_PASSWORD is not."
+            exit 1
+          fi
+          # PKCS12 keystores use one password for the store and the key, and
+          # the alias defaults to the one in the README.
+          KEY_ALIAS="${KEY_ALIAS:-mongomobile}"
+          KEY_PASSWORD="${KEY_PASSWORD:-$KEYSTORE_PASSWORD}"
           echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.jks
+          keytool -list -keystore android/app/release.jks -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" > /dev/null \
+            || { echo "::error::The keystore can't be opened with ANDROID_KEYSTORE_PASSWORD or has no alias '$KEY_ALIAS'."; exit 1; }
           cat > android/key.properties <<PROPS
           storeFile=release.jks
           storePassword=$KEYSTORE_PASSWORD
           keyAlias=$KEY_ALIAS
           keyPassword=$KEY_PASSWORD
           PROPS
+          echo "release=true" >> "$GITHUB_OUTPUT"
 
       - name: Build APK
         run: |
@@ -95,6 +108,25 @@ jobs:
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/mongomobile-$VERSION_NAME.apk"
           sha256sum "dist/mongomobile-$VERSION_NAME.apk" > "dist/mongomobile-$VERSION_NAME.apk.sha256"
+
+      - name: Check the APK signer
+        env:
+          RELEASE_SIGNED: ${{ steps.signing.outputs.release }}
+        run: |
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          CERTS=$("$APKSIGNER" verify --print-certs "dist/mongomobile-$VERSION_NAME.apk")
+          echo "$CERTS"
+          if [ "$RELEASE_SIGNED" = "true" ] && echo "$CERTS" | grep -q "CN=Android Debug"; then
+            echo "::error::Signing secrets are set but the APK was signed with the debug key."
+            exit 1
+          fi
+          DIGEST=$(echo "$CERTS" | grep -m1 "SHA-256 digest" | sed 's/.*: //')
+          echo "SIGNER_SHA256=$DIGEST" >> "$GITHUB_ENV"
+          if [ "$RELEASE_SIGNED" = "true" ]; then
+            echo "SIGNING_NOTE=Signed with the MongoMobile release key; installs over earlier releases signed with the same key." >> "$GITHUB_ENV"
+          else
+            echo "SIGNING_NOTE=Signed with a throwaway debug key; uninstall older versions before installing." >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -117,3 +149,6 @@ jobs:
 
             Download `mongomobile-${{ env.VERSION_NAME }}.apk` on your phone and open it to install.
             See the README for step-by-step instructions.
+
+            ${{ env.SIGNING_NOTE }}
+            Signing certificate SHA-256: `${{ env.SIGNER_SHA256 }}`

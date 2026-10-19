@@ -28,10 +28,11 @@ endorsed by MongoDB, Inc. "MongoDB" is a trademark of MongoDB, Inc.
 Each release also has a `.sha256` file if you want to check the download:
 `sha256sum -c mongomobile-0.1.N.apk.sha256`.
 
-**Updating:** unless the repository has release signing set up (see
-[Signing](#release-signing)), each build is signed with a different debug
-key. Android then refuses to install a new version over an old one, so
-uninstall the old version first. Saved connections are removed with it.
+**Updating:** releases signed with the MongoMobile release key install over
+each other and keep your saved connections. The release notes say which key
+signed a build. Debug-signed builds (from before signing was set up, see
+[Release signing](#release-signing)) must be uninstalled first, and that
+removes saved connections.
 
 **Atlas and other hosted clusters:** add your phone's IP address (or
 `0.0.0.0/0` while testing) to the cluster's network access list.
@@ -156,19 +157,40 @@ and pushes to `main` publish it as a GitHub Release tagged
 
 ### Release signing
 
-Without secrets the APK is signed with the runner's debug key. To sign
-releases with your own key (so updates install over older versions), create
-a keystore once:
+Android only installs an update over an existing app when both are signed
+with the same key. Without signing secrets, CI signs with a throwaway debug
+key that changes every run, so each release needs an uninstall first.
 
-```sh
-keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 \
-  -validity 10000 -alias mongomobile
-base64 -w0 release.jks   # copy the output
-```
+To sign every release with one permanent key:
 
-Then add these repository secrets (Settings → Secrets and variables →
-Actions): `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
-`ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`.
+1. Create a keystore once (or use the one you were given):
+
+   ```sh
+   keytool -genkeypair -storetype PKCS12 -keystore mongomobile-release.jks \
+     -alias mongomobile -keyalg RSA -keysize 4096 -validity 10000
+   base64 -w0 mongomobile-release.jks > ANDROID_KEYSTORE_BASE64.txt
+   ```
+
+2. In GitHub, open **Settings → Secrets and variables → Actions → New
+   repository secret** and add:
+
+   | Secret | Value |
+   |---|---|
+   | `ANDROID_KEYSTORE_BASE64` | the contents of `ANDROID_KEYSTORE_BASE64.txt` |
+   | `ANDROID_KEYSTORE_PASSWORD` | the keystore password |
+
+   `ANDROID_KEY_ALIAS` (default `mongomobile`) and `ANDROID_KEY_PASSWORD`
+   (default: the keystore password) are optional.
+
+3. Re-run the latest CI workflow or push a commit. The **Check the APK
+   signer** step prints the certificate and fails if the secrets are set but
+   the APK still came out debug-signed. Each release notes the signing
+   certificate's SHA-256.
+
+Keep the `.jks` file and its password backed up somewhere safe, outside the
+repository. If the key is lost, no future build can update installed copies.
+The first release-signed build still needs one uninstall of any older,
+debug-signed version.
 
 ## Licences
 

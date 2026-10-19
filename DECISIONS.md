@@ -30,6 +30,10 @@ One line per decision: what was decided and why.
 - Riverpod automatic retry is turned off globally; errors are shown with a Retry button instead.
 - SASLprep is a practical subset (no NFKC normalisation), since Dart has no Unicode normalisation built in; this is documented.
 - X.509, Kerberos, AWS and OIDC auth are left out of v1, with a clear error message.
+- Release signing: one RSA-4096 PKCS12 key (alias `mongomobile`, 10,000-day validity) generated in the session and handed to the owner, not committed, because a key in a public repo would let anyone ship "updates" to installed copies.
+- Only two secrets are required (keystore and password); alias and key password have defaults, since PKCS12 uses one password for both.
+- CI checks the APK signer and fails if secrets are set but the APK is debug-signed, and the release notes state the signing certificate SHA-256, so a wrongly signed release can't slip out.
+- Secrets can't be set from the session (the proxy blocks the Actions secrets API), so the owner adds them in the GitHub UI.
 
 ## Blockers and fallbacks
 

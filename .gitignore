@@ -50,3 +50,8 @@ app.*.map.json
 # Release builds
 /dist/
 android/app/release.jks
+
+# Signing keys
+*.jks
+*.keystore
+key.properties
