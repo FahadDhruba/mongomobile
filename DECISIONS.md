@@ -30,3 +30,9 @@ One line per decision: what was decided and why.
 - Riverpod automatic retry is turned off globally; errors are shown with a Retry button instead.
 - SASLprep is a practical subset (no NFKC normalisation), since Dart has no Unicode normalisation built in; this is documented.
 - X.509, Kerberos, AWS and OIDC auth are left out of v1, with a clear error message.
+
+## Blockers and fallbacks
+
+- Pushing is blocked: `git push` returns 403 ("Claude doesn't have GitHub access to FahadDhruba/mongomobile"), the GitHub connector is read-only ("Resource not accessible by integration"), and the session's `gh` token is invalid. Fallback: all work is committed locally on `main`, a git bundle is written to `dist/mongomobile-main.bundle`, and the session retries the push on a schedule. Fix: install the Claude GitHub App on the repository (https://github.com/apps/claude/installations/select_target) or reconnect at https://claude.ai/connect-github.
+- No local APK build: the sandbox can't reach `dl.google.com`, where the Android Gradle Plugin and Google Maven artifacts are served (`maven.google.com` redirects there, and public mirrors are blocked). The Android SDK itself was taken from the `cimg/android` Docker image, but Gradle can't resolve AGP 9.1.0. Fallback: the APK is built only by GitHub Actions; analyze and all tests pass locally.
+- CI has not run yet because nothing could be pushed, so the GitHub Release does not exist yet.
