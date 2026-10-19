@@ -677,6 +677,81 @@ class WireMongoClient implements MongoClient {
   }
 
   @override
+  Future<void> dropCollection(Namespace ns) async {
+    try {
+      await _write(ns.db, {'drop': ns.collection});
+    } on MongoServerError catch (e) {
+      if (e.code != 26) rethrow; // NamespaceNotFound
+    }
+  }
+
+  @override
+  Stream<List<Map<String, dynamic>>> findBatches(
+    Namespace ns, {
+    Map<String, dynamic> filter = const {},
+    Map<String, dynamic>? projection,
+    Map<String, dynamic>? sort,
+    int limit = 0,
+    int batchSize = 1000,
+    CancelToken? cancel,
+  }) async* {
+    if (_closed) throw MongoNetworkError('The connection is closed');
+    final timeout = _localTimeout(null);
+    final conn = await _pool.acquire(cancel: cancel);
+    var id = 0;
+    try {
+      var reply = (await conn.send(
+        ns.db,
+        {
+          'find': ns.collection,
+          'filter': filter,
+          if (sort != null && sort.isNotEmpty) 'sort': sort,
+          if (projection != null && projection.isNotEmpty)
+            'projection': projection,
+          if (limit > 0) 'limit': limit,
+          'batchSize': limit > 0 ? min(limit, batchSize) : batchSize,
+        },
+        cancel: cancel,
+        timeout: timeout,
+      ))
+          .document;
+      id = _cursorId(reply);
+      final first = _firstBatch(reply);
+      if (first.isNotEmpty) yield first;
+      while (id != 0) {
+        cancel?.throwIfCancelled();
+        reply = (await conn.send(
+          ns.db,
+          {
+            'getMore': BsonLong(id),
+            'collection': ns.collection,
+            'batchSize': batchSize,
+          },
+          cancel: cancel,
+          timeout: timeout,
+        ))
+            .document;
+        id = _cursorId(reply);
+        final batch = ((reply['cursor'] as Map)['nextBatch'] as List)
+            .cast<Map<String, dynamic>>();
+        if (batch.isNotEmpty) yield batch;
+      }
+    } finally {
+      if (id != 0 && !conn.isClosed) {
+        // Stopped early (cancelled, or the listener went away): free the
+        // server-side cursor.
+        unawaited(conn
+            .send(ns.db, {
+              'killCursors': ns.collection,
+              'cursors': [BsonLong(id)],
+            }, timeout: const Duration(seconds: 5))
+            .then((_) {}, onError: (_) {}));
+      }
+      _pool.release(conn);
+    }
+  }
+
+  @override
   Future<void> close() async {
     _closed = true;
     _pool.close();

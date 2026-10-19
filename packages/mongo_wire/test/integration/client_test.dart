@@ -147,6 +147,79 @@ void main() {
     });
   });
 
+  group('export cursor', () {
+    final coll = ns('export');
+
+    setUpAll(() async {
+      for (var i = 0; i < 120; i++) {
+        await client.insertOne(coll, {'_id': i, 'even': i.isEven});
+      }
+    });
+
+    test('streams every document in batches', () async {
+      final batches = await client.findBatches(coll, batchSize: 50).toList();
+      expect(batches.map((b) => b.length), [50, 50, 20]);
+      expect(
+        batches.expand((b) => b).map((d) => d['_id']),
+        List.generate(120, (i) => i),
+      );
+    });
+
+    test('applies filter, sort, projection and limit', () async {
+      final docs = await client
+          .findBatches(
+            coll,
+            filter: {'even': true},
+            sort: {'_id': -1},
+            projection: {'_id': 1},
+            limit: 7,
+            batchSize: 3,
+          )
+          .expand((b) => b)
+          .toList();
+      expect(docs.map((d) => d['_id']), [118, 116, 114, 112, 110, 108, 106]);
+      expect(docs.first.keys, ['_id']);
+    });
+
+    test('stops when cancelled and leaves the client usable', () async {
+      final token = CancelToken();
+      var seen = 0;
+      await expectLater(() async {
+        await for (final b in client.findBatches(
+          coll,
+          batchSize: 10,
+          cancel: token,
+        )) {
+          seen += b.length;
+          if (seen >= 20) token.cancel();
+        }
+      }(), throwsA(isA<MongoCancelledError>()));
+      expect(seen, 20);
+      expect(await client.estimatedDocumentCount(coll), 120);
+    });
+
+    test('a listener that stops early releases the connection', () async {
+      final first = await client.findBatches(coll, batchSize: 10).first;
+      expect(first.length, 10);
+      // Several more exports would block if connections leaked.
+      for (var i = 0; i < 8; i++) {
+        expect(
+          (await client.findBatches(coll, batchSize: 10).first).length,
+          10,
+        );
+      }
+    });
+  });
+
+  test('drops a collection, and dropping again is fine', () async {
+    final coll = ns('to_drop');
+    await client.insertOne(coll, {'a': 1});
+    await client.dropCollection(coll);
+    final names = (await client.listCollections(dbName)).map((c) => c.name);
+    expect(names, isNot(contains('to_drop')));
+    await client.dropCollection(coll);
+  });
+
   test('stops reading at the byte cap', () async {
     final coll = ns('big');
     final big = 'x' * (200 * 1024);

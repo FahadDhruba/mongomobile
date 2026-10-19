@@ -235,6 +235,25 @@ abstract interface class MongoClient {
 
   Future<void> dropIndex(Namespace ns, String name);
 
+  /// Drops the collection. Dropping one that doesn't exist is not an error.
+  Future<void> dropCollection(Namespace ns);
+
+  /// Streams every matching document in batches, for exports.
+  ///
+  /// Unlike [find], there is no size cap and no overall time limit, since an
+  /// export of a large collection legitimately takes long; [limit] 0 means
+  /// no limit. Cancelling [cancel] stops the stream with a
+  /// [MongoCancelledError] and closes the server cursor.
+  Stream<List<Map<String, dynamic>>> findBatches(
+    Namespace ns, {
+    Map<String, dynamic> filter = const {},
+    Map<String, dynamic>? projection,
+    Map<String, dynamic>? sort,
+    int limit = 0,
+    int batchSize = 1000,
+    CancelToken? cancel,
+  });
+
   Future<void> close();
 }
 
