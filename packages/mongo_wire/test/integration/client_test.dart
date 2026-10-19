@@ -131,6 +131,15 @@ void main() {
       expect(r.documents.first.keys, ['n']);
     });
 
+    test('reads more than one batch with a time limit', () async {
+      // Regression: getMore must not carry maxTimeMS (BadValue on servers).
+      final r = await client.find(
+        coll,
+        const FindRequest(limit: 100, maxTime: Duration(seconds: 10)),
+      );
+      expect(r.documents.length, 100);
+    });
+
     test('reads more than one batch', () async {
       final r = await client.find(coll, const FindRequest(limit: 100));
       expect(r.documents.length, 100);

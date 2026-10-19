@@ -35,6 +35,8 @@ One line per decision: what was decided and why.
 - CI checks the APK signer and fails if secrets are set but the APK is debug-signed, and the release notes state the signing certificate SHA-256, so a wrongly signed release can't slip out.
 - Secrets can't be set from the session (the proxy blocks the Actions secrets API), so the owner adds them in the GitHub UI.
 - Fix for the frozen splash in v0.1.2/v0.1.3: settings moved from shared_preferences to secure storage, because shared_preferences_android 2.5 goes through package:jni (classes looked up by name, which R8 can rename in release builds) and `main()` awaited it before `runApp`. Startup now uses a timeout, falls back to default settings, and shows errors on screen instead of hanging; R8 keep rules for jni and the plugin classes are added as a safeguard.
+- getMore no longer sends maxTimeMS (servers reject it for non-tailable cursors); the find's own maxTimeMS already covers the cursor. Found on a real Atlas cluster with collections bigger than one batch.
+- mongodb+srv strings are resolved before the credentials are set up, so the TXT record's `authSource=admin` applies even when the URI path names a database (`.../fibrodon`). Before, such URIs tried to log in against the path database.
 
 ## Blockers and fallbacks
 

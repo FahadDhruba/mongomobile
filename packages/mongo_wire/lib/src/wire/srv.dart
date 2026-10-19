@@ -157,3 +157,18 @@ Future<Seedlist> resolveSeedlist(String host, DnsResolver dns) async {
   }
   return Seedlist(hosts, options);
 }
+
+/// Resolves a `mongodb+srv` connection string into a plain one with the
+/// SRV hosts and TXT options. Other connection strings are returned as is.
+///
+/// Credentials and the auth source must be taken from the result: Atlas
+/// puts `authSource=admin` in its TXT record, which matters when the URI
+/// path names an application database.
+Future<ConnectionString> resolveConnectionString(
+  ConnectionString cs,
+  DnsResolver dns,
+) async {
+  if (!cs.isSrv) return cs;
+  final seeds = await resolveSeedlist(cs.hosts.single.host, dns);
+  return cs.withSeedlist(seeds.hosts, seeds.options);
+}

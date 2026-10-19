@@ -46,12 +46,14 @@ class WireMongoClient implements MongoClient {
   }) async {
     final cs = ConnectionString.parse(uri);
     final resolver = dns ?? DohResolver();
+    // Resolve SRV first: its TXT record can set authSource.
+    final resolved = await resolveConnectionString(cs, resolver);
     final ho = HandshakeOptions(
-      username: cs.username,
-      password: cs.password,
-      authSource: cs.authSource,
-      authMechanism: cs.authMechanism,
-      appName: cs.appName ?? options.appName,
+      username: resolved.username,
+      password: resolved.password,
+      authSource: resolved.authSource,
+      authMechanism: resolved.authMechanism,
+      appName: resolved.appName ?? options.appName,
     );
     if (cs.authMechanism == 'MONGODB-X509' ||
         cs.authMechanism == 'GSSAPI' ||
@@ -61,7 +63,7 @@ class WireMongoClient implements MongoClient {
         'authMechanism=${cs.authMechanism} is not supported yet',
       );
     }
-    final selected = await _discover(cs, options, resolver, ho);
+    final selected = await _discover(resolved, options, resolver, ho);
     final server = await _serverInfo(selected);
     return WireMongoClient._(cs, options, resolver, ho, selected, server);
   }
@@ -461,13 +463,16 @@ class WireMongoClient implements MongoClient {
           final remaining = r.limit - docs.length;
           final average = docs.isEmpty ? 1024 : max(1, bytes ~/ docs.length);
           final batch = ((r.maxBytes - bytes) ~/ average).clamp(1, remaining);
+          // No maxTimeMS here: servers only accept it on getMore for
+          // tailable awaitData cursors. The time limit set on find already
+          // covers the cursor's later batches.
           reply = await c.send(
             ns.db,
-            _withCommon({
+            {
               'getMore': BsonLong(id),
               'collection': ns.collection,
               'batchSize': batch,
-            }, maxTime: r.maxTime),
+            },
             cancel: cancel,
             timeout: timeout,
           );

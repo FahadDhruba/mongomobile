@@ -52,10 +52,7 @@ Future<SelectedServer> _select(
   int poolSize,
 ) async {
   var cs = original;
-  if (cs.isSrv) {
-    final seeds = await resolveSeedlist(cs.hosts.single.host, dns);
-    cs = cs.withSeedlist(seeds.hosts, seeds.options);
-  }
+  cs = await resolveConnectionString(cs, dns);
   final tls = tlsFor(cs);
 
   ConnectionPool poolFor(HostAddress a) => ConnectionPool(
