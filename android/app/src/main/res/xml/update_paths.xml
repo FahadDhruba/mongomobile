@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Downloaded updates live in cache/updates and are shared with the
+     system installer through FileProvider. -->
+<paths>
+    <cache-path name="updates" path="updates/" />
+</paths>

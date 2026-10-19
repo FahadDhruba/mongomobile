@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/app_settings.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../services/updater.dart';
 import '../widgets/common.dart';
+import 'update_sheet.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -16,14 +18,17 @@ class SettingsScreen extends ConsumerWidget {
     final notifier = ref.read(settingsProvider.notifier);
 
     Widget section(String title) => Padding(
-          padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-          child: Text(title.toUpperCase(),
-              style: TextStyle(
-                  color: c.accent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.8)),
-        );
+      padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
+      child: Text(
+        title.toUpperCase(),
+        style: TextStyle(
+          color: c.accent,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
 
     Future<void> pickNumber({
       required String title,
@@ -92,7 +97,8 @@ class SettingsScreen extends ConsumerWidget {
           ListTile(
             title: const Text('Count time limit'),
             subtitle: const Text(
-                'Filtered counts run in the background and give up after this'),
+              'Filtered counts run in the background and give up after this',
+            ),
             trailing: Text('${s.countTimeoutMs ~/ 1000} s'),
             onTap: () => pickNumber(
               title: 'Count time limit',
@@ -130,7 +136,9 @@ class SettingsScreen extends ConsumerWidget {
           ),
           ListTile(
             title: const Text('Long values'),
-            subtitle: const Text('Show this many characters before "show more"'),
+            subtitle: const Text(
+              'Show this many characters before "show more"',
+            ),
             trailing: Text('${s.stringPreviewLength}'),
             onTap: () => pickNumber(
               title: 'Preview length',
@@ -145,26 +153,33 @@ class SettingsScreen extends ConsumerWidget {
           SwitchListTile(
             title: const Text('Biometric lock'),
             subtitle: const Text(
-                'Ask for your fingerprint, face or screen lock when the app '
-                'opens or returns after 30 seconds'),
+              'Ask for your fingerprint, face or screen lock when the app '
+              'opens or returns after 30 seconds',
+            ),
             value: s.biometricLock,
             onChanged: (v) async {
               final bio = ref.read(biometricsProvider);
               if (v) {
                 if (!await bio.isAvailable()) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
                         content: Text(
-                            'Set up a screen lock or biometrics on this device first')));
+                          'Set up a screen lock or biometrics on this device first',
+                        ),
+                      ),
+                    );
                   }
                   return;
                 }
-                final error =
-                    await bio.authenticate('Confirm to turn on the app lock');
+                final error = await bio.authenticate(
+                  'Confirm to turn on the app lock',
+                );
                 if (error != null) {
                   if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text(error)));
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(error)));
                   }
                   return;
                 }
@@ -176,16 +191,34 @@ class SettingsScreen extends ConsumerWidget {
             leading: Icon(Icons.lock_outline),
             title: Text('Connections are stored encrypted'),
             subtitle: Text(
-                'Connection strings, including passwords, are kept in Android '
-                'secure storage and never leave the device except to reach your '
-                'server.'),
+              'Connection strings, including passwords, are kept in Android '
+              'secure storage and never leave the device except to reach your '
+              'server.',
+            ),
+          ),
+          section('Updates'),
+          ListTile(
+            leading: const Icon(Icons.system_update_alt),
+            title: const Text('Check for updates'),
+            subtitle: Text('Installed version: $appVersion'),
+            onTap: () => checkForUpdatesNow(context, ref),
+          ),
+          SwitchListTile(
+            title: const Text('Check automatically'),
+            subtitle: const Text(
+              'Ask GitHub Releases for a newer version when the app starts',
+            ),
+            value: s.autoCheckUpdates,
+            onChanged: (v) =>
+                notifier.update((x) => x.copyWith(autoCheckUpdates: v)),
           ),
           section('About'),
           ListTile(
             leading: const AppLogo(size: 28),
             title: const Text('MongoMobile'),
             subtitle: const Text(
-                'A serverless MongoDB client. Not affiliated with MongoDB, Inc.'),
+              'A serverless MongoDB client. Not affiliated with MongoDB, Inc.',
+            ),
             onTap: () => showLicensePage(
               context: context,
               applicationName: 'MongoMobile',

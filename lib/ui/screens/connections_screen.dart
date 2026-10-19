@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../widgets/common.dart';
 import 'connection_edit_screen.dart';
 import 'settings_screen.dart';
+import 'update_sheet.dart';
 import 'workspace_screen.dart';
 
 /// The start screen: saved connections.
@@ -16,11 +17,16 @@ class ConnectionsScreen extends ConsumerWidget {
   Future<void> _edit(BuildContext context, [ConnectionProfile? profile]) =>
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => ConnectionEditScreen(profile: profile)),
+        MaterialPageRoute(
+          builder: (_) => ConnectionEditScreen(profile: profile),
+        ),
       );
 
   Future<void> _connect(
-      BuildContext context, WidgetRef ref, ConnectionProfile profile) async {
+    BuildContext context,
+    WidgetRef ref,
+    ConnectionProfile profile,
+  ) async {
     var cancelled = false;
     String? error;
     showDialog<void>(
@@ -35,7 +41,9 @@ class ConnectionsScreen extends ConsumerWidget {
                 width: 24,
                 height: 24,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: ctx.colors.accent),
+                  strokeWidth: 2.5,
+                  color: ctx.colors.accent,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(child: Text('Connecting to ${profile.displayName}…')),
@@ -73,20 +81,25 @@ class ConnectionsScreen extends ConsumerWidget {
           content: SelectableText(error!),
           actions: [
             TextButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _edit(context, profile);
-                },
-                child: const Text('Edit connection')),
+              onPressed: () {
+                Navigator.pop(ctx);
+                _edit(context, profile);
+              },
+              child: const Text('Edit connection'),
+            ),
             FilledButton(
-                onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
           ],
         ),
       );
       return;
     }
     await Navigator.push(
-        context, MaterialPageRoute(builder: (_) => const WorkspaceScreen()));
+      context,
+      MaterialPageRoute(builder: (_) => const WorkspaceScreen()),
+    );
   }
 
   @override
@@ -105,8 +118,10 @@ class ConnectionsScreen extends ConsumerWidget {
         actions: [
           IconButton(
             tooltip: 'Settings',
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen())),
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
             icon: const Icon(Icons.settings_outlined),
           ),
         ],
@@ -116,62 +131,91 @@ class ConnectionsScreen extends ConsumerWidget {
         foregroundColor: c.onAccent,
         onPressed: () => _edit(context),
         icon: const Icon(Icons.add),
-        label: const Text('New connection',
-            style: TextStyle(fontWeight: FontWeight.w700)),
-      ),
-      body: connections.when(
-        loading: () => const LoadingView(),
-        error: (e, _) => Padding(
-          padding: const EdgeInsets.all(16),
-          child: MessageBanner(
-              message: 'Saved connections could not be read: ${describeError(e)}'),
+        label: const Text(
+          'New connection',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
-        data: (list) {
-          if (list.isEmpty) {
-            return EmptyState(
-              icon: Icons.cable,
-              title: 'No connections yet',
-              message: 'Add a mongodb:// or mongodb+srv:// connection string. '
-                  'Everything stays on this device; there is no server in '
-                  'between.',
-              action: AccentButton(
-                label: 'New connection',
-                icon: Icons.add,
-                onPressed: () => _edit(context),
-              ),
-            );
-          }
-          final sorted = [...list]..sort((a, b) {
-              final x = a.lastUsed, y = b.lastUsed;
-              if (x == null && y == null) return a.displayName.compareTo(b.displayName);
-              if (x == null) return 1;
-              if (y == null) return -1;
-              return y.compareTo(x);
-            });
-          return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
-            itemCount: sorted.length,
-            separatorBuilder: (_, _) => const SizedBox(height: 8),
-            itemBuilder: (_, i) => _ConnectionCard(
-              profile: sorted[i],
-              onTap: () => _connect(context, ref, sorted[i]),
-              onEdit: () => _edit(context, sorted[i]),
-              onDuplicate: () => ref.read(connectionsProvider.notifier).upsert(
-                  sorted[i].copyWith(
-                      id: ConnectionProfile.newId(),
-                      name: '${sorted[i].displayName} copy')),
-              onDelete: () async {
-                final ok = await confirmDialog(context,
-                    title: 'Delete connection?',
-                    message: 'Remove "${sorted[i].displayName}" from this device?');
-                if (ok) {
-                  await ref.read(connectionsProvider.notifier).delete(sorted[i].id);
-                }
-              },
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const UpdateBanner(),
+          Expanded(child: _list(context, ref, connections)),
+        ],
+      ),
+    );
+  }
+
+  Widget _list(
+    BuildContext context,
+    WidgetRef ref,
+    AsyncValue<List<ConnectionProfile>> connections,
+  ) {
+    return connections.when(
+      loading: () => const LoadingView(),
+      error: (e, _) => Padding(
+        padding: const EdgeInsets.all(16),
+        child: MessageBanner(
+          message: 'Saved connections could not be read: ${describeError(e)}',
+        ),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return EmptyState(
+            icon: Icons.cable,
+            title: 'No connections yet',
+            message:
+                'Add a mongodb:// or mongodb+srv:// connection string. '
+                'Everything stays on this device; there is no server in '
+                'between.',
+            action: AccentButton(
+              label: 'New connection',
+              icon: Icons.add,
+              onPressed: () => _edit(context),
             ),
           );
-        },
-      ),
+        }
+        final sorted = [...list]
+          ..sort((a, b) {
+            final x = a.lastUsed, y = b.lastUsed;
+            if (x == null && y == null) {
+              return a.displayName.compareTo(b.displayName);
+            }
+            if (x == null) return 1;
+            if (y == null) return -1;
+            return y.compareTo(x);
+          });
+        return ListView.separated(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 96),
+          itemCount: sorted.length,
+          separatorBuilder: (_, _) => const SizedBox(height: 8),
+          itemBuilder: (_, i) => _ConnectionCard(
+            profile: sorted[i],
+            onTap: () => _connect(context, ref, sorted[i]),
+            onEdit: () => _edit(context, sorted[i]),
+            onDuplicate: () => ref
+                .read(connectionsProvider.notifier)
+                .upsert(
+                  sorted[i].copyWith(
+                    id: ConnectionProfile.newId(),
+                    name: '${sorted[i].displayName} copy',
+                  ),
+                ),
+            onDelete: () async {
+              final ok = await confirmDialog(
+                context,
+                title: 'Delete connection?',
+                message: 'Remove "${sorted[i].displayName}" from this device?',
+              );
+              if (ok) {
+                await ref
+                    .read(connectionsProvider.notifier)
+                    .delete(sorted[i].id);
+              }
+            },
+          ),
+        );
+      },
     );
   }
 }
@@ -214,16 +258,22 @@ class _ConnectionCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(profile.displayName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                            fontSize: 15.5, fontWeight: FontWeight.w600)),
+                    Text(
+                      profile.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(height: 2),
-                    Text(profile.displayHost,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: monoStyle(context, size: 12, color: c.muted)),
+                    Text(
+                      profile.displayHost,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: monoStyle(context, size: 12, color: c.muted),
+                    ),
                   ],
                 ),
               ),

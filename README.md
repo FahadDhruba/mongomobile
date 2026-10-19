@@ -75,6 +75,17 @@ removes saved connections.
   or an array), edit and clone; delete asks for confirmation. Extended JSON
   types (ObjectId, Date, Int64, Decimal128, Binary, UUID, Timestamp, regex
   and more) survive a round trip unchanged.
+- **Export:** the current query or the whole collection as Extended JSON
+  (relaxed or canonical) or CSV with nested fields flattened to columns
+  like `address.city` and `items[0].sku`, saved wherever you choose with
+  Android's file picker. Large exports stream in batches with progress and
+  a Cancel button.
+- **Collections:** drop a collection from the collection menu (write mode,
+  and you type its name to confirm).
+- **Updates:** the app checks GitHub Releases at start (can be turned off in
+  Settings) and offers **Download and install**. The APK is checked against
+  the release's SHA-256 file and handed to Android's installer, which keeps
+  your data because every release is signed with the same key.
 - **Indexes:** list with sizes and flags (unique, sparse, TTL, partial,
   hidden, text, geo), create and drop.
 - **Safety:** every connection opens in read-only mode; writes need an

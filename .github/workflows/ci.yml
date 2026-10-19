@@ -104,7 +104,8 @@ jobs:
         run: |
           flutter build apk --release \
             --build-name="$VERSION_NAME" \
-            --build-number="${{ github.run_number }}"
+            --build-number="${{ github.run_number }}" \
+            --dart-define=APP_VERSION="$VERSION_NAME"
           mkdir -p dist
           cp build/app/outputs/flutter-apk/app-release.apk "dist/mongomobile-$VERSION_NAME.apk"
           sha256sum "dist/mongomobile-$VERSION_NAME.apk" > "dist/mongomobile-$VERSION_NAME.apk.sha256"

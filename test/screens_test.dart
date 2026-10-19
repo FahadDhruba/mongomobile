@@ -235,4 +235,79 @@ void main() {
     await shot(tester, '20-light-documents');
     expect(find.text('1 – 25 of ~40'), findsOneWidget);
   });
+
+  testWidgets('export to a file and drop a collection', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    final written = <int>[];
+    var closed = false;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      const MethodChannel('com.mongomobile.app/files'),
+      (call) async {
+        switch (call.method) {
+          case 'createDocument':
+            expect(call.arguments['name'], 'shop.orders.csv');
+            return 1;
+          case 'write':
+            written.addAll(call.arguments['bytes'] as List<int>);
+          case 'close':
+            closed = true;
+        }
+        return null;
+      },
+    );
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Export'));
+    await tester.pumpAndSettle();
+    expect(find.text('Export shop.orders'), findsOneWidget);
+    expect(find.text('~40 documents'), findsOneWidget);
+    await tester.tap(find.text('CSV'));
+    await shot(tester, '16-export');
+    await tester.tap(find.text('Export…'));
+    await tester.pumpAndSettle();
+    expect(closed, isTrue);
+    final csv = String.fromCharCodes(written);
+    expect(csv.split('\r\n').first, startsWith('_id,orderNo,customer.name'));
+    expect(csv.split('\r\n').where((l) => l.isNotEmpty).length, 41);
+    expect(find.text('Exported 40 documents'), findsOneWidget);
+
+    // Dropping needs write mode and the typed collection name.
+    await tester.tap(find.byType(PopupMenuButton<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Drop collection…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Turn on write mode to drop collections'), findsOneWidget);
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byType(PopupMenuButton<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Drop collection…'));
+    await tester.pumpAndSettle();
+    final drop = find.widgetWithText(FilledButton, 'Drop');
+    expect(tester.widget<FilledButton>(drop).onPressed, isNull);
+    await tester.enterText(find.byType(TextField).last, 'orders');
+    await tester.pump();
+    await shot(tester, '17-drop-collection');
+    await tester.tap(drop);
+    await tester.pumpAndSettle();
+    expect(client.data['shop']!.containsKey('orders'), isFalse);
+    expect(find.text('Collection orders dropped'), findsOneWidget);
+    expect(find.text('Database'), findsOneWidget);
+  });
 }

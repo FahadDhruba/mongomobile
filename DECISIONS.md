@@ -37,6 +37,12 @@ One line per decision: what was decided and why.
 - Fix for the frozen splash in v0.1.2/v0.1.3: settings moved from shared_preferences to secure storage, because shared_preferences_android 2.5 goes through package:jni (classes looked up by name, which R8 can rename in release builds) and `main()` awaited it before `runApp`. Startup now uses a timeout, falls back to default settings, and shows errors on screen instead of hanging; R8 keep rules for jni and the plugin classes are added as a safeguard.
 - getMore no longer sends maxTimeMS (servers reject it for non-tailable cursors); the find's own maxTimeMS already covers the cursor. Found on a real Atlas cluster with collections bigger than one batch.
 - mongodb+srv strings are resolved before the credentials are set up, so the TXT record's `authSource=admin` applies even when the URI path names a database (`.../fibrodon`). Before, such URIs tried to log in against the path database.
+- Export saves through Android's Storage Access Framework (ACTION_CREATE_DOCUMENT) with a small channel in MainActivity, so it needs no storage permission and no file plugin; writes happen on a background thread in 256 KB chunks.
+- CSV export reads the results twice (once to collect every field path, once to write), matching Compass's column handling; it refuses more than 2,000 columns and points to JSON instead. No UTF-8 BOM, since it confuses many CSV parsers.
+- Export has no maxTimeMS or byte cap (a large export legitimately runs long) and uses its own cursor (`findBatches`) that is killed on cancel.
+- Dropping a collection requires write mode and typing the collection name, as in Compass.
+- In-app updates use GitHub Releases: the version comes from `--dart-define=APP_VERSION` set by CI, the APK is verified against the release's .sha256 file, and it is installed through FileProvider + the system installer (REQUEST_INSTALL_PACKAGES). Local `dev` builds never offer updates.
+- The automatic update check runs once per launch, can be turned off, and treats any network error as "no update" so it never gets in the way.
 
 ## Blockers and fallbacks
 

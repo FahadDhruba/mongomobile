@@ -18,14 +18,18 @@ class FakeMongoClient implements MongoClient {
 
   @override
   ServerInfo get server => const ServerInfo(
-        address: 'localhost:27017',
-        version: '7.0.14',
-        kind: 'Standalone',
-        isWritable: true,
-        maxWireVersion: 21,
-      );
+    address: 'localhost:27017',
+    version: '7.0.14',
+    kind: 'Standalone',
+    isWritable: true,
+    maxWireVersion: 21,
+  );
 
+  /// Reads never create a collection; writes do.
   List<Map<String, dynamic>> _coll(Namespace ns) =>
+      data[ns.db]?[ns.collection] ?? <Map<String, dynamic>>[];
+
+  List<Map<String, dynamic>> _writable(Namespace ns) =>
       data.putIfAbsent(ns.db, () => {}).putIfAbsent(ns.collection, () => []);
 
   static int _cmp(Object? a, Object? b) {
@@ -39,7 +43,8 @@ class FakeMongoClient implements MongoClient {
     for (final e in filter.entries) {
       if (e.key == r'$and') {
         if (!(e.value as List).every(
-            (f) => matches(doc, f as Map<String, dynamic>))) {
+          (f) => matches(doc, f as Map<String, dynamic>),
+        )) {
           return false;
         }
         continue;
@@ -68,8 +73,11 @@ class FakeMongoClient implements MongoClient {
   }
 
   @override
-  Future<FindResult> find(Namespace ns, FindRequest r,
-      {CancelToken? cancel}) async {
+  Future<FindResult> find(
+    Namespace ns,
+    FindRequest r, {
+    CancelToken? cancel,
+  }) async {
     finds.add(r);
     if (findDelay > Duration.zero) {
       await Future.any([
@@ -86,20 +94,32 @@ class FakeMongoClient implements MongoClient {
       docs.sort((a, b) => dir * _cmp(a[field], b[field]));
     }
     docs = docs.skip(r.skip).take(r.limit).toList();
-    return FindResult([for (final d in docs) {...d}],
-        byteLength: 100 * docs.length,
-        truncated: false,
-        elapsed: const Duration(milliseconds: 3));
+    return FindResult(
+      [
+        for (final d in docs) {...d},
+      ],
+      byteLength: 100 * docs.length,
+      truncated: false,
+      elapsed: const Duration(milliseconds: 3),
+    );
   }
 
   @override
-  Future<int> estimatedDocumentCount(Namespace ns,
-          {Duration? maxTime, CancelToken? cancel}) async =>
-      _coll(ns).length;
+  Future<int> estimatedDocumentCount(
+    Namespace ns, {
+    Duration? maxTime,
+    CancelToken? cancel,
+  }) async => _coll(ns).length;
 
   @override
-  Future<int> countDocuments(Namespace ns, Map<String, dynamic> filter,
-      {int skip = 0, int? limit, Duration? maxTime, CancelToken? cancel}) async {
+  Future<int> countDocuments(
+    Namespace ns,
+    Map<String, dynamic> filter, {
+    int skip = 0,
+    int? limit,
+    Duration? maxTime,
+    CancelToken? cancel,
+  }) async {
     var n = _coll(ns).where((d) => matches(d, filter)).length - skip;
     if (limit != null && n > limit) n = limit;
     return n < 0 ? 0 : n;
@@ -108,13 +128,16 @@ class FakeMongoClient implements MongoClient {
   @override
   Future<Object?> insertOne(Namespace ns, Map<String, dynamic> document) async {
     final doc = {'_id': ObjectId(), ...document};
-    _coll(ns).add(doc);
+    _writable(ns).add(doc);
     return doc['_id'];
   }
 
   @override
-  Future<UpdateResult> replaceOne(Namespace ns, Map<String, dynamic> filter,
-      Map<String, dynamic> replacement) async {
+  Future<UpdateResult> replaceOne(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Map<String, dynamic> replacement,
+  ) async {
     final list = _coll(ns);
     final i = list.indexWhere((d) => matches(d, filter));
     if (i < 0) return const UpdateResult(0, 0);
@@ -133,41 +156,48 @@ class FakeMongoClient implements MongoClient {
 
   @override
   Future<List<DatabaseInfo>> listDatabases({CancelToken? cancel}) async => [
-        for (final db in data.keys) DatabaseInfo(db, sizeOnDisk: 40960),
-      ];
+    for (final db in data.keys) DatabaseInfo(db, sizeOnDisk: 40960),
+  ];
 
   @override
-  Future<List<CollectionInfo>> listCollections(String db,
-          {CancelToken? cancel}) async =>
-      [for (final c in (data[db] ?? {}).keys) CollectionInfo(c)];
+  Future<List<CollectionInfo>> listCollections(
+    String db, {
+    CancelToken? cancel,
+  }) async => [for (final c in (data[db] ?? {}).keys) CollectionInfo(c)];
 
   @override
-  Future<CollectionStats?> collectionStats(Namespace ns,
-          {CancelToken? cancel}) async =>
-      CollectionStats(
-          count: _coll(ns).length,
-          size: _coll(ns).length * 100,
-          storageSize: 4096,
-          totalIndexSize: 4096,
-          indexSizes: const {'_id_': 4096});
+  Future<CollectionStats?> collectionStats(
+    Namespace ns, {
+    CancelToken? cancel,
+  }) async => CollectionStats(
+    count: _coll(ns).length,
+    size: _coll(ns).length * 100,
+    storageSize: 4096,
+    totalIndexSize: 4096,
+    indexSizes: const {'_id_': 4096},
+  );
 
   final Map<Namespace, List<Map<String, dynamic>>> indexes = {};
 
   @override
-  Future<List<Map<String, dynamic>>> listIndexes(Namespace ns,
-          {CancelToken? cancel}) async =>
-      [
-        {
-          'v': 2,
-          'key': {'_id': 1},
-          'name': '_id_'
-        },
-        ...?indexes[ns],
-      ];
+  Future<List<Map<String, dynamic>>> listIndexes(
+    Namespace ns, {
+    CancelToken? cancel,
+  }) async => [
+    {
+      'v': 2,
+      'key': {'_id': 1},
+      'name': '_id_',
+    },
+    ...?indexes[ns],
+  ];
 
   @override
-  Future<String> createIndex(Namespace ns, Map<String, dynamic> keys,
-      [IndexOptions options = const IndexOptions()]) async {
+  Future<String> createIndex(
+    Namespace ns,
+    Map<String, dynamic> keys, [
+    IndexOptions options = const IndexOptions(),
+  ]) async {
     final name = options.name?.isNotEmpty ?? false
         ? options.name!
         : WireMongoClient.defaultIndexName(keys);
@@ -186,10 +216,44 @@ class FakeMongoClient implements MongoClient {
   }
 
   @override
+  Future<void> dropCollection(Namespace ns) async {
+    data[ns.db]?.remove(ns.collection);
+  }
+
+  @override
+  Stream<List<Map<String, dynamic>>> findBatches(
+    Namespace ns, {
+    Map<String, dynamic> filter = const {},
+    Map<String, dynamic>? projection,
+    Map<String, dynamic>? sort,
+    int limit = 0,
+    int batchSize = 1000,
+    CancelToken? cancel,
+  }) async* {
+    final all = (await find(
+      ns,
+      FindRequest(
+        filter: filter,
+        sort: sort,
+        limit: limit > 0 ? limit : 1 << 30,
+      ),
+    )).documents;
+    for (var i = 0; i < all.length; i += batchSize) {
+      cancel?.throwIfCancelled();
+      yield all.sublist(
+        i,
+        i + batchSize > all.length ? all.length : i + batchSize,
+      );
+    }
+  }
+
+  @override
   Future<Map<String, dynamic>> runCommand(
-          String db, Map<String, dynamic> command,
-          {CancelToken? cancel, Duration? maxTime}) async =>
-      {'ok': 1};
+    String db,
+    Map<String, dynamic> command, {
+    CancelToken? cancel,
+    Duration? maxTime,
+  }) async => {'ok': 1};
 
   @override
   Future<void> close() async => closed = true;
@@ -201,8 +265,10 @@ class FakeConnector implements MongoConnector {
   String? lastUri;
 
   @override
-  Future<MongoClient> connect(String uri,
-      [ConnectOptions options = const ConnectOptions()]) async {
+  Future<MongoClient> connect(
+    String uri, [
+    ConnectOptions options = const ConnectOptions(),
+  ]) async {
     lastUri = uri;
     return client;
   }

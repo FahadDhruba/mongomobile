@@ -7,16 +7,38 @@ import '../models/app_settings.dart';
 import '../models/connection_profile.dart';
 import '../services/biometrics.dart';
 import '../services/connection_store.dart';
+import '../services/native.dart';
 import '../services/settings_store.dart';
+import '../services/updater.dart';
 
 // Services. Overridden in tests.
-final connectorProvider = Provider<MongoConnector>((_) => const WireConnector());
-final connectionStoreProvider = Provider<ConnectionStore>((_) => ConnectionStore());
+final connectorProvider = Provider<MongoConnector>(
+  (_) => const WireConnector(),
+);
+final connectionStoreProvider = Provider<ConnectionStore>(
+  (_) => ConnectionStore(),
+);
 final settingsStoreProvider = Provider<SettingsStore>((_) => SettingsStore());
 final biometricsProvider = Provider<Biometrics>((_) => Biometrics());
+final nativeFilesProvider = Provider<NativeFiles>((_) => NativeFiles());
+final updaterProvider = Provider<Updater>((_) => Updater());
+
+/// A newer release, checked once per launch when automatic checks are on.
+/// Errors (offline, rate limits) count as "no update".
+final availableUpdateProvider = FutureProvider<ReleaseInfo?>((ref) async {
+  final auto = ref.watch(settingsProvider.select((s) => s.autoCheckUpdates));
+  if (!auto) return null;
+  try {
+    return await ref.read(updaterProvider).availableUpdate();
+  } on Object {
+    return null;
+  }
+});
 
 /// Settings loaded before the app starts; see main().
-final initialSettingsProvider = Provider<AppSettings>((_) => const AppSettings());
+final initialSettingsProvider = Provider<AppSettings>(
+  (_) => const AppSettings(),
+);
 
 class SettingsNotifier extends Notifier<AppSettings> {
   @override
@@ -28,17 +50,21 @@ class SettingsNotifier extends Notifier<AppSettings> {
   }
 }
 
-final settingsProvider =
-    NotifierProvider<SettingsNotifier, AppSettings>(SettingsNotifier.new);
+final settingsProvider = NotifierProvider<SettingsNotifier, AppSettings>(
+  SettingsNotifier.new,
+);
 
 class ConnectionsNotifier extends AsyncNotifier<List<ConnectionProfile>> {
   @override
   Future<List<ConnectionProfile>> build() => ref
       .read(connectionStoreProvider)
       .load()
-      .timeout(const Duration(seconds: 10),
-          onTimeout: () => throw TimeoutException(
-              'Secure storage did not answer within 10 seconds'));
+      .timeout(
+        const Duration(seconds: 10),
+        onTimeout: () => throw TimeoutException(
+          'Secure storage did not answer within 10 seconds',
+        ),
+      );
 
   Future<void> _persist(List<ConnectionProfile> list) async {
     state = AsyncData(list);
@@ -71,7 +97,8 @@ class ConnectionsNotifier extends AsyncNotifier<List<ConnectionProfile>> {
 
 final connectionsProvider =
     AsyncNotifierProvider<ConnectionsNotifier, List<ConnectionProfile>>(
-        ConnectionsNotifier.new);
+      ConnectionsNotifier.new,
+    );
 
 /// A live connection.
 class Session {
@@ -87,8 +114,11 @@ class Session {
   /// Writes are blocked until the user turns on write mode.
   final bool readOnly;
 
-  Session copyWith({bool? readOnly}) =>
-      Session(profile: profile, client: client, readOnly: readOnly ?? this.readOnly);
+  Session copyWith({bool? readOnly}) => Session(
+    profile: profile,
+    client: client,
+    readOnly: readOnly ?? this.readOnly,
+  );
 }
 
 class SessionNotifier extends Notifier<Session?> {
@@ -118,8 +148,9 @@ class SessionNotifier extends Notifier<Session?> {
   }
 }
 
-final sessionProvider =
-    NotifierProvider<SessionNotifier, Session?>(SessionNotifier.new);
+final sessionProvider = NotifierProvider<SessionNotifier, Session?>(
+  SessionNotifier.new,
+);
 
 /// The current client; throws when nothing is connected.
 final clientProvider = Provider<MongoClient>((ref) {
@@ -128,8 +159,9 @@ final clientProvider = Provider<MongoClient>((ref) {
   return s.client;
 });
 
-final readOnlyProvider =
-    Provider<bool>((ref) => ref.watch(sessionProvider)?.readOnly ?? true);
+final readOnlyProvider = Provider<bool>(
+  (ref) => ref.watch(sessionProvider)?.readOnly ?? true,
+);
 
 /// What the workspace body shows.
 class Selection {
@@ -164,19 +196,21 @@ class SelectionNotifier extends Notifier<Selection> {
   }
 }
 
-final selectionProvider =
-    NotifierProvider<SelectionNotifier, Selection>(SelectionNotifier.new);
+final selectionProvider = NotifierProvider<SelectionNotifier, Selection>(
+  SelectionNotifier.new,
+);
 
 final databasesProvider = FutureProvider<List<DatabaseInfo>>((ref) {
   final client = ref.watch(clientProvider);
   return client.listDatabases();
 });
 
-final collectionsProvider =
-    FutureProvider.family<List<CollectionInfo>, String>((ref, db) {
-  final client = ref.watch(clientProvider);
-  return client.listCollections(db);
-});
+final collectionsProvider = FutureProvider.family<List<CollectionInfo>, String>(
+  (ref, db) {
+    final client = ref.watch(clientProvider);
+    return client.listCollections(db);
+  },
+);
 
 /// Limits how many stats requests run at once, so browsing the tree never
 /// fills the connection pool ahead of a document query.
@@ -212,11 +246,11 @@ final _statsSemaphoreProvider = Provider<Semaphore>((ref) {
 
 final collectionStatsProvider =
     FutureProvider.family<CollectionStats?, Namespace>((ref, ns) {
-  final client = ref.watch(clientProvider);
-  return ref
-      .watch(_statsSemaphoreProvider)
-      .run(() => client.collectionStats(ns));
-});
+      final client = ref.watch(clientProvider);
+      return ref
+          .watch(_statsSemaphoreProvider)
+          .run(() => client.collectionStats(ns));
+    });
 
 /// Turns any error into a message for the UI.
 String describeError(Object error) {

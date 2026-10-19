@@ -10,6 +10,7 @@ class AppSettings {
     this.maxPageMegabytes = 4,
     this.biometricLock = false,
     this.stringPreviewLength = 200,
+    this.autoCheckUpdates = true,
   });
 
   static const pageSizes = [10, 25, 50, 100];
@@ -30,6 +31,9 @@ class AppSettings {
   /// Strings longer than this are cut with a "show more" control.
   final int stringPreviewLength;
 
+  /// Look for a newer release on GitHub when the app starts.
+  final bool autoCheckUpdates;
+
   Duration get queryTimeout => Duration(milliseconds: queryTimeoutMs);
   Duration get countTimeout => Duration(milliseconds: countTimeoutMs);
   int get maxPageBytes => maxPageMegabytes * 1024 * 1024;
@@ -42,26 +46,28 @@ class AppSettings {
     int? maxPageMegabytes,
     bool? biometricLock,
     int? stringPreviewLength,
-  }) =>
-      AppSettings(
-        themeMode: themeMode ?? this.themeMode,
-        queryTimeoutMs: queryTimeoutMs ?? this.queryTimeoutMs,
-        countTimeoutMs: countTimeoutMs ?? this.countTimeoutMs,
-        defaultPageSize: defaultPageSize ?? this.defaultPageSize,
-        maxPageMegabytes: maxPageMegabytes ?? this.maxPageMegabytes,
-        biometricLock: biometricLock ?? this.biometricLock,
-        stringPreviewLength: stringPreviewLength ?? this.stringPreviewLength,
-      );
+    bool? autoCheckUpdates,
+  }) => AppSettings(
+    themeMode: themeMode ?? this.themeMode,
+    queryTimeoutMs: queryTimeoutMs ?? this.queryTimeoutMs,
+    countTimeoutMs: countTimeoutMs ?? this.countTimeoutMs,
+    defaultPageSize: defaultPageSize ?? this.defaultPageSize,
+    maxPageMegabytes: maxPageMegabytes ?? this.maxPageMegabytes,
+    biometricLock: biometricLock ?? this.biometricLock,
+    stringPreviewLength: stringPreviewLength ?? this.stringPreviewLength,
+    autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
+  );
 
   Map<String, dynamic> toJson() => {
-        'themeMode': themeMode.name,
-        'queryTimeoutMs': queryTimeoutMs,
-        'countTimeoutMs': countTimeoutMs,
-        'defaultPageSize': defaultPageSize,
-        'maxPageMegabytes': maxPageMegabytes,
-        'biometricLock': biometricLock,
-        'stringPreviewLength': stringPreviewLength,
-      };
+    'themeMode': themeMode.name,
+    'queryTimeoutMs': queryTimeoutMs,
+    'countTimeoutMs': countTimeoutMs,
+    'defaultPageSize': defaultPageSize,
+    'maxPageMegabytes': maxPageMegabytes,
+    'biometricLock': biometricLock,
+    'stringPreviewLength': stringPreviewLength,
+    'autoCheckUpdates': autoCheckUpdates,
+  };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
     const d = AppSettings();
@@ -72,16 +78,24 @@ class AppSettings {
 
     final pageSize = read('defaultPageSize', d.defaultPageSize, 1, 100);
     return AppSettings(
-      themeMode: ThemeMode.values.firstWhere((m) => m.name == j['themeMode'],
-          orElse: () => d.themeMode),
+      themeMode: ThemeMode.values.firstWhere(
+        (m) => m.name == j['themeMode'],
+        orElse: () => d.themeMode,
+      ),
       queryTimeoutMs: read('queryTimeoutMs', d.queryTimeoutMs, 500, 600000),
       countTimeoutMs: read('countTimeoutMs', d.countTimeoutMs, 500, 600000),
-      defaultPageSize:
-          pageSizes.contains(pageSize) ? pageSize : d.defaultPageSize,
+      defaultPageSize: pageSizes.contains(pageSize)
+          ? pageSize
+          : d.defaultPageSize,
       maxPageMegabytes: read('maxPageMegabytes', d.maxPageMegabytes, 1, 32),
       biometricLock: j['biometricLock'] == true,
-      stringPreviewLength:
-          read('stringPreviewLength', d.stringPreviewLength, 40, 100000),
+      stringPreviewLength: read(
+        'stringPreviewLength',
+        d.stringPreviewLength,
+        40,
+        100000,
+      ),
+      autoCheckUpdates: j['autoCheckUpdates'] != false,
     );
   }
 }
