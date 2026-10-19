@@ -32,8 +32,10 @@ void main() {
       expect(doc['dec'].toString(), '1.10');
       expect(doc['bin'], BsonBinary(0x80, [1, 2, 3]));
       expect(doc['legacyBin'], BsonBinary(0, [1, 2, 3]));
-      expect((doc['uuid'] as BsonBinary).uuidString,
-          '123e4567-e89b-12d3-a456-426614174000');
+      expect(
+        (doc['uuid'] as BsonBinary).uuidString,
+        '123e4567-e89b-12d3-a456-426614174000',
+      );
       expect(doc['ts'], const BsonTimestamp(1, 2));
       expect(doc['re'], const BsonRegex('a', 'im'));
       expect(doc['code'], const BsonCode('x'));
@@ -82,11 +84,12 @@ void main() {
 
     test('keeps query operators untouched', () {
       final q = EJson.parseDocument(
-          '{age: {\$gt: 5, \$lt: 10}, name: {\$regex: "^a"}, tags: {\$in: ["x"]}}');
+        '{age: {\$gt: 5, \$lt: 10}, name: {\$regex: "^a"}, tags: {\$in: ["x"]}}',
+      );
       expect(q['age'], {r'$gt': 5, r'$lt': 10});
       expect(q['name'], {r'$regex': '^a'});
       expect(q['tags'], {
-        r'$in': ['x']
+        r'$in': ['x'],
       });
     });
 
@@ -161,8 +164,14 @@ void main() {
       expect(text, contains('"l":2'));
       expect(text, contains('"d":3.0'));
       expect(text, contains(r'"date":{"$date":"2024-01-01T00:00:00.000Z"}'));
-      expect(text, contains(r'"old":{"$date":{"$numberLong":"-2208988800000"}}'));
-      expect(text, contains(r'"bin":{"$binary":{"base64":"/w==","subType":"80"}}'));
+      expect(
+        text,
+        contains(r'"old":{"$date":{"$numberLong":"-2208988800000"}}'),
+      );
+      expect(
+        text,
+        contains(r'"bin":{"$binary":{"base64":"/w==","subType":"80"}}'),
+      );
     });
 
     test('formats doubles so they read back as doubles', () {

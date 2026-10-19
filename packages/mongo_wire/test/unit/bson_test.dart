@@ -15,11 +15,18 @@ void main() {
         'integralDouble': 5.0,
         'string': 'héllo',
         'doc': {'a': 1, 'b': 'x'},
-        'array': [1, 'two', null, [3]],
+        'array': [
+          1,
+          'two',
+          null,
+          [3],
+        ],
         'binary': BsonBinary(0, [1, 2, 3]),
         'oldBinary': BsonBinary(2, [4, 5]),
         'userBinary': BsonBinary(0x80, [9]),
-        'uuid': BsonBinary.uuidFromString('123e4567-e89b-12d3-a456-426614174000'),
+        'uuid': BsonBinary.uuidFromString(
+          '123e4567-e89b-12d3-a456-426614174000',
+        ),
         'undefined': BsonUndefined.instance,
         'oid': oid,
         'true': true,
@@ -78,8 +85,10 @@ void main() {
 
     test('rejects truncated data', () {
       final bytes = Bson.encode({'a': 'hello'});
-      expect(() => Bson.decode(Uint8List.sublistView(bytes, 0, 10)),
-          throwsA(isA<BsonException>()));
+      expect(
+        () => Bson.decode(Uint8List.sublistView(bytes, 0, 10)),
+        throwsA(isA<BsonException>()),
+      );
     });
 
     test('rejects unknown element types', () {
@@ -105,10 +114,26 @@ void main() {
 
   group('Decimal128', () {
     const canonical = [
-      '0', '-0', '1', '-1', '0.1', '0.001234', '1.50', '-1.00E-8', '1E+3',
-      '123456789012345678901234567890.1234', '1.234567890123456789012345678901234E+40',
-      '9.999999999999999999999999999999999E+6144', '1E-6176', '0E-6176',
-      '0E+6111', 'NaN', 'Infinity', '-Infinity', '0.000001', '1E-7',
+      '0',
+      '-0',
+      '1',
+      '-1',
+      '0.1',
+      '0.001234',
+      '1.50',
+      '-1.00E-8',
+      '1E+3',
+      '123456789012345678901234567890.1234',
+      '1.234567890123456789012345678901234E+40',
+      '9.999999999999999999999999999999999E+6144',
+      '1E-6176',
+      '0E-6176',
+      '0E+6111',
+      'NaN',
+      'Infinity',
+      '-Infinity',
+      '0.000001',
+      '1E-7',
     ];
 
     for (final s in canonical) {
@@ -131,8 +156,10 @@ void main() {
     });
 
     test('rejects values that need rounding', () {
-      expect(() => Decimal128.parse('1.2345678901234567890123456789012345'),
-          throwsFormatException);
+      expect(
+        () => Decimal128.parse('1.2345678901234567890123456789012345'),
+        throwsFormatException,
+      );
       expect(() => Decimal128.parse('1E+7000'), throwsFormatException);
       expect(() => Decimal128.parse('abc'), throwsFormatException);
     });

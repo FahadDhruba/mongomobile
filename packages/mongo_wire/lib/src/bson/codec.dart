@@ -250,18 +250,17 @@ class _Writer {
         _cstring(key);
       default:
         throw BsonException(
-            'Cannot encode a value of type ${v.runtimeType} at "$key"');
+          'Cannot encode a value of type ${v.runtimeType} at "$key"',
+        );
     }
   }
 }
 
 /// The BSON spec requires regex options in alphabetical order.
-String _sortedOptions(String options) =>
-    (options.split('')..sort()).join();
+String _sortedOptions(String options) => (options.split('')..sort()).join();
 
 class _Reader {
-  _Reader(this._bytes, this._pos)
-      : _view = ByteData.sublistView(_bytes);
+  _Reader(this._bytes, this._pos) : _view = ByteData.sublistView(_bytes);
 
   final Uint8List _bytes;
   final ByteData _view;
@@ -316,8 +315,10 @@ class _Reader {
       if (_bytes[_pos] == 0) break;
       _pos++;
     }
-    final s = utf8.decode(Uint8List.sublistView(_bytes, start, _pos),
-        allowMalformed: true);
+    final s = utf8.decode(
+      Uint8List.sublistView(_bytes, start, _pos),
+      allowMalformed: true,
+    );
     _pos++;
     return s;
   }
@@ -326,8 +327,10 @@ class _Reader {
     final len = _int32();
     if (len < 1) throw BsonException('Invalid string length $len');
     _need(len);
-    final s = utf8.decode(Uint8List.sublistView(_bytes, _pos, _pos + len - 1),
-        allowMalformed: true);
+    final s = utf8.decode(
+      Uint8List.sublistView(_bytes, _pos, _pos + len - 1),
+      allowMalformed: true,
+    );
     _pos += len;
     return s;
   }
@@ -420,7 +423,8 @@ class _Reader {
         return BsonMaxKey.instance;
       default:
         throw BsonException(
-            'Unknown BSON type 0x${type.toRadixString(16)} at "$key"');
+          'Unknown BSON type 0x${type.toRadixString(16)} at "$key"',
+        );
     }
   }
 }

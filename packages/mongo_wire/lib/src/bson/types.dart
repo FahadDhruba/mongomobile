@@ -75,8 +75,10 @@ final class ObjectId implements Comparable<ObjectId> {
       s.length == 24 && RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(s);
 
   static final Random _random = Random.secure();
-  static final List<int> _processUnique =
-      List<int>.generate(5, (_) => _random.nextInt(256));
+  static final List<int> _processUnique = List<int>.generate(
+    5,
+    (_) => _random.nextInt(256),
+  );
   static int _counter = _random.nextInt(0xffffff);
 
   final Uint8List bytes;
@@ -218,7 +220,9 @@ final class BsonRegex {
 
   @override
   bool operator ==(Object other) =>
-      other is BsonRegex && other.pattern == pattern && other.options == options;
+      other is BsonRegex &&
+      other.pattern == pattern &&
+      other.options == options;
 
   @override
   int get hashCode => Object.hash(pattern, options);
@@ -344,26 +348,26 @@ bool _bytesEqual(List<int> a, List<int> b) {
 
 /// Short type name used in the UI and error messages.
 String bsonTypeName(Object? v) => switch (v) {
-      null => 'Null',
-      String() => 'String',
-      bool() => 'Boolean',
-      int() => 'Int32',
-      double() => 'Double',
-      BsonLong() => 'Int64',
-      Decimal128() => 'Decimal128',
-      ObjectId() => 'ObjectId',
-      DateTime() || BsonDate() => 'Date',
-      Map() => 'Object',
-      List() => 'Array',
-      BsonBinary(isUuid: true) => 'UUID',
-      BsonBinary() => 'Binary',
-      BsonRegex() => 'BSONRegExp',
-      BsonTimestamp() => 'Timestamp',
-      BsonCode() => 'Code',
-      BsonSymbol() => 'Symbol',
-      BsonDbPointer() => 'DBPointer',
-      BsonUndefined() => 'Undefined',
-      BsonMinKey() => 'MinKey',
-      BsonMaxKey() => 'MaxKey',
-      _ => v.runtimeType.toString(),
-    };
+  null => 'Null',
+  String() => 'String',
+  bool() => 'Boolean',
+  int() => 'Int32',
+  double() => 'Double',
+  BsonLong() => 'Int64',
+  Decimal128() => 'Decimal128',
+  ObjectId() => 'ObjectId',
+  DateTime() || BsonDate() => 'Date',
+  Map() => 'Object',
+  List() => 'Array',
+  BsonBinary(isUuid: true) => 'UUID',
+  BsonBinary() => 'Binary',
+  BsonRegex() => 'BSONRegExp',
+  BsonTimestamp() => 'Timestamp',
+  BsonCode() => 'Code',
+  BsonSymbol() => 'Symbol',
+  BsonDbPointer() => 'DBPointer',
+  BsonUndefined() => 'Undefined',
+  BsonMinKey() => 'MinKey',
+  BsonMaxKey() => 'MaxKey',
+  _ => v.runtimeType.toString(),
+};

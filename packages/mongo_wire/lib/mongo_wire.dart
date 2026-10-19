@@ -4,4 +4,12 @@ library;
 
 export 'src/bson/codec.dart';
 export 'src/bson/types.dart';
+export 'src/cancel.dart';
+export 'src/client.dart';
 export 'src/ejson/ejson.dart';
+export 'src/errors.dart';
+export 'src/wire/connection_string.dart' show ConnectionString, HostAddress;
+export 'src/wire/scram.dart'
+    show ScramConversation, ScramMechanism, pbkdf2, saslPrep;
+export 'src/wire/srv.dart';
+export 'src/wire_client.dart';

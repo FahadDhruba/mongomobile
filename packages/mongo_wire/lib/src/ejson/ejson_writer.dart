@@ -88,8 +88,9 @@ class EJsonWriter {
 
   String _inline(Object? v) {
     if (v is Map) {
-      final parts = v.entries.map((e) =>
-          '${jsonEncode(e.key)}${_pretty ? ': ' : ':'}${_inline(e.value)}');
+      final parts = v.entries.map(
+        (e) => '${jsonEncode(e.key)}${_pretty ? ': ' : ':'}${_inline(e.value)}',
+      );
       return '{${parts.join(_pretty ? ', ' : ',')}}';
     }
     return jsonEncode(v);
@@ -146,8 +147,10 @@ class EJsonWriter {
       case BsonTimestamp():
         _wrap(sb, r'$timestamp', {'t': v.seconds, 'i': v.increment});
       case BsonRegex():
-        _wrap(sb, r'$regularExpression',
-            {'pattern': v.pattern, 'options': v.options});
+        _wrap(sb, r'$regularExpression', {
+          'pattern': v.pattern,
+          'options': v.options,
+        });
       case BsonCode(scope: null):
         _wrap(sb, r'$code', v.code);
       case BsonCode():
@@ -164,9 +167,11 @@ class EJsonWriter {
       case BsonSymbol():
         _wrap(sb, r'$symbol', v.value);
       case BsonDbPointer():
-        sb.write('{"\$dbPointer"${_pretty ? ': ' : ':'}{"\$ref"'
-            '${_pretty ? ': ' : ':'}${jsonEncode(v.namespace)}'
-            '${_pretty ? ', ' : ','}"\$id"${_pretty ? ': ' : ':'}');
+        sb.write(
+          '{"\$dbPointer"${_pretty ? ': ' : ':'}{"\$ref"'
+          '${_pretty ? ': ' : ':'}${jsonEncode(v.namespace)}'
+          '${_pretty ? ', ' : ','}"\$id"${_pretty ? ': ' : ':'}',
+        );
         _wrap(sb, r'$oid', v.id.hex);
         sb.write('}}');
       case BsonUndefined():

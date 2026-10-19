@@ -19,7 +19,8 @@ class EJsonParseException implements FormatException {
   int get line => '\n'.allMatches(source.substring(0, offset)).length + 1;
 
   /// 1-based column of [offset].
-  int get column => offset - (source.lastIndexOf('\n', max(0, offset - 1)) + 1) + 1;
+  int get column =>
+      offset - (source.lastIndexOf('\n', max(0, offset - 1)) + 1) + 1;
 
   @override
   String toString() => '$message (line $line, column $column)';
@@ -46,8 +47,10 @@ class EJsonParser {
 
   /// Parses a document. An empty or blank input gives an empty document
   /// when [allowEmpty] is true.
-  static Map<String, dynamic> parseDocument(String source,
-      {bool allowEmpty = false}) {
+  static Map<String, dynamic> parseDocument(
+    String source, {
+    bool allowEmpty = false,
+  }) {
     if (allowEmpty && source.trim().isEmpty) return <String, dynamic>{};
     final p = EJsonParser(source);
     final v = p.parseValue();
@@ -65,7 +68,10 @@ class EJsonParser {
       return v.cast<Map<String, dynamic>>();
     }
     throw EJsonParseException(
-        'Expected a document or an array of documents', source, 0);
+      'Expected a document or an array of documents',
+      source,
+      0,
+    );
   }
 
   /// Parses one complete value; trailing text other than whitespace and
@@ -224,7 +230,10 @@ class EJsonParser {
             sb.write('\u0000');
           case 'u':
             if (_pos + 4 > source.length) _fail('Invalid \\u escape');
-            final code = int.tryParse(source.substring(_pos, _pos + 4), radix: 16);
+            final code = int.tryParse(
+              source.substring(_pos, _pos + 4),
+              radix: 16,
+            );
             if (code == null) _fail('Invalid \\u escape');
             sb.writeCharCode(code);
             _pos += 4;
@@ -472,7 +481,9 @@ class EJsonParser {
           }
           if (args.isEmpty) return const BsonTimestamp(0, 0);
           return BsonTimestamp(
-              _asInt(args[0], at), _asInt(args.length > 1 ? args[1] : 0, at));
+            _asInt(args[0], at),
+            _asInt(args.length > 1 ? args[1] : 0, at),
+          );
         case 'MinKey':
           return BsonMinKey.instance;
         case 'MaxKey':
@@ -601,7 +612,9 @@ class EJsonParser {
           m[r'$code'] is String &&
           m[r'$scope'] is Map<String, dynamic>) {
         return BsonCode(
-            m[r'$code'] as String, m[r'$scope'] as Map<String, dynamic>);
+          m[r'$code'] as String,
+          m[r'$scope'] as Map<String, dynamic>,
+        );
       }
       if (only({r'$symbol'}) && m[r'$symbol'] is String) {
         return BsonSymbol(m[r'$symbol'] as String);
@@ -632,8 +645,10 @@ class EJsonParser {
 /// Parses an ISO-8601 date. A date without a time zone is taken as UTC.
 Object parseIsoDate(String s) {
   var t = s.trim();
-  final hasZone = RegExp(r'(Z|[+-]\d\d:?\d\d)$', caseSensitive: false)
-      .hasMatch(t);
+  final hasZone = RegExp(
+    r'(Z|[+-]\d\d:?\d\d)$',
+    caseSensitive: false,
+  ).hasMatch(t);
   if (RegExp(r'^[+-]?\d{4,6}-\d\d-\d\d$').hasMatch(t)) t = '${t}T00:00:00';
   if (!hasZone && t.contains(RegExp(r'\d{4}-\d\d-\d\d'))) t = '${t}Z';
   final d = DateTime.tryParse(t);

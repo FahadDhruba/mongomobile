@@ -48,8 +48,9 @@ final class Decimal128 {
     final s = input.trim();
     final lower = s.toLowerCase();
     final negative = s.startsWith('-');
-    final unsigned =
-        (s.startsWith('-') || s.startsWith('+')) ? lower.substring(1) : lower;
+    final unsigned = (s.startsWith('-') || s.startsWith('+'))
+        ? lower.substring(1)
+        : lower;
     final sign = negative ? BigInt.one << 63 : BigInt.zero;
     if (unsigned == 'nan') {
       return _fromParts(BigInt.from(0x7c00) << 48, BigInt.zero);
@@ -57,7 +58,9 @@ final class Decimal128 {
     if (unsigned == 'inf' || unsigned == 'infinity') {
       return _fromParts(sign | (BigInt.from(0x7800) << 48), BigInt.zero);
     }
-    final m = RegExp(r'^(\d*)(?:\.(\d*))?(?:e([+-]?\d+))?$').firstMatch(unsigned);
+    final m = RegExp(
+      r'^(\d*)(?:\.(\d*))?(?:e([+-]?\d+))?$',
+    ).firstMatch(unsigned);
     if (m == null ||
         ((m.group(1) ?? '').isEmpty && (m.group(2) ?? '').isEmpty)) {
       throw FormatException('Invalid Decimal128 string', input);
@@ -76,7 +79,9 @@ final class Decimal128 {
     }
     if (digits.length > _maxDigits) {
       throw FormatException(
-          'Decimal128 holds at most 34 significant digits', input);
+        'Decimal128 holds at most 34 significant digits',
+        input,
+      );
     }
     while (exponent > _exponentMax && digits.length < _maxDigits) {
       if (digits == '0') {
@@ -106,8 +111,7 @@ final class Decimal128 {
 
   bool get isNaN => (_high >> 58) & BigInt.from(0x1f) == BigInt.from(0x1f);
 
-  bool get isInfinite =>
-      (_high >> 58) & BigInt.from(0x1f) == BigInt.from(0x1e);
+  bool get isInfinite => (_high >> 58) & BigInt.from(0x1f) == BigInt.from(0x1e);
 
   @override
   String toString() {
@@ -126,8 +130,7 @@ final class Decimal128 {
       coefficient = BigInt.zero;
     } else {
       biasedExponent = ((high >> 49) & BigInt.from(0x3fff)).toInt();
-      coefficient =
-          ((high & ((BigInt.one << 49) - BigInt.one)) << 64) | low;
+      coefficient = ((high & ((BigInt.one << 49) - BigInt.one)) << 64) | low;
       if (coefficient > _maxCoefficient) coefficient = BigInt.zero;
     }
     final exponent = biasedExponent - _exponentBias;
