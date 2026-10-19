@@ -13,6 +13,7 @@ import '../widgets/document_card.dart';
 import '../widgets/document_table.dart';
 import '../widgets/query_bar.dart';
 import 'document_editor_screen.dart';
+import 'export_sheet.dart';
 
 enum DocumentView { list, json, table }
 
@@ -48,13 +49,16 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
   /// Loads the complete document, since the page may use a projection.
   Future<Map<String, dynamic>?> _fetchFull(Object? id) async {
     try {
-      final r = await ref.read(clientProvider).find(
+      final r = await ref
+          .read(clientProvider)
+          .find(
             widget.namespace,
             FindRequest(
-                filter: {'_id': id},
-                limit: 1,
-                maxTime: ref.read(settingsProvider).queryTimeout,
-                maxBytes: 64 << 20),
+              filter: {'_id': id},
+              limit: 1,
+              maxTime: ref.read(settingsProvider).queryTimeout,
+              maxBytes: 64 << 20,
+            ),
           );
       if (r.documents.isEmpty) {
         _snack('The document no longer exists.');
@@ -111,12 +115,15 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     final ok = await confirmDialog(
       context,
       title: 'Delete document?',
-      message: 'This permanently deletes the document with _id '
+      message:
+          'This permanently deletes the document with _id '
           '${shellRepr(id)} from ${widget.namespace}.',
     );
     if (!ok) return;
     try {
-      final n = await ref.read(clientProvider).deleteOne(widget.namespace, {'_id': id});
+      final n = await ref.read(clientProvider).deleteOne(widget.namespace, {
+        '_id': id,
+      });
       _snack(n == 1 ? 'Document deleted' : 'The document was already gone');
       await _ctrl.refresh();
       ref.invalidate(collectionStatsProvider(widget.namespace));
@@ -167,8 +174,8 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
           insertHint: isView
               ? 'Views are read-only'
               : readOnly
-                  ? 'Turn on write mode to insert'
-                  : null,
+              ? 'Turn on write mode to insert'
+              : null,
           onView: (v) => setState(() => _view = v),
           onInsert: () => _openEditor(EditorMode.insert, '{\n  \n}'),
           onPageSize: (n) {
@@ -184,9 +191,10 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
             _ctrl.next();
           },
           onRefresh: () => _ctrl.refresh(),
+          onExport: () =>
+              showExportSheet(context, widget.namespace, query: state.query),
         ),
-        if (state.loading)
-          _RunningBar(onCancel: _ctrl.cancel),
+        if (state.loading) _RunningBar(onCancel: _ctrl.cancel),
         Expanded(
           child: _Results(
             state: state,
@@ -211,18 +219,27 @@ class _RunningBar extends StatelessWidget {
     final c = context.colors;
     return Column(
       children: [
-        LinearProgressIndicator(minHeight: 2, color: c.accent, backgroundColor: c.border),
+        LinearProgressIndicator(
+          minHeight: 2,
+          color: c.accent,
+          backgroundColor: c.border,
+        ),
         Container(
           color: c.panel,
           padding: const EdgeInsets.fromLTRB(16, 2, 8, 2),
           child: Row(
             children: [
-              Text('Running query…', style: TextStyle(color: c.muted, fontSize: 13)),
+              Text(
+                'Running query…',
+                style: TextStyle(color: c.muted, fontSize: 13),
+              ),
               const Spacer(),
               TextButton.icon(
                 onPressed: onCancel,
                 style: TextButton.styleFrom(
-                    foregroundColor: c.danger, visualDensity: VisualDensity.compact),
+                  foregroundColor: c.danger,
+                  visualDensity: VisualDensity.compact,
+                ),
                 icon: const Icon(Icons.stop_circle_outlined, size: 18),
                 label: const Text('Cancel'),
               ),
@@ -239,11 +256,11 @@ String pageLabel(DocumentsState s) {
   final n = s.documents.length;
   final count = s.count;
   String total() => switch (count.kind) {
-        CountKind.loading => ' of …',
-        CountKind.estimated => ' of ~${compactCount(count.value!)}',
-        CountKind.exact => ' of ${groupDigits(count.value!)}',
-        CountKind.unavailable => ' · count unavailable',
-      };
+    CountKind.loading => ' of …',
+    CountKind.estimated => ' of ~${compactCount(count.value!)}',
+    CountKind.exact => ' of ${groupDigits(count.value!)}',
+    CountKind.unavailable => ' · count unavailable',
+  };
   if (n == 0) {
     if (count.kind == CountKind.exact && count.value == 0) return '0 documents';
     return s.offset == 0 ? 'No documents' : 'No more documents';
@@ -263,6 +280,7 @@ class _Toolbar extends StatelessWidget {
     required this.onPrevious,
     required this.onNext,
     required this.onRefresh,
+    required this.onExport,
   });
 
   final DocumentsState state;
@@ -275,6 +293,7 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onPrevious;
   final VoidCallback onNext;
   final VoidCallback onRefresh;
+  final VoidCallback onExport;
 
   @override
   Widget build(BuildContext context) {
@@ -306,17 +325,20 @@ class _Toolbar extends StatelessWidget {
                 ),
                 segments: const [
                   ButtonSegment(
-                      value: DocumentView.list,
-                      icon: Icon(Icons.view_agenda_outlined, size: 18),
-                      tooltip: 'List view'),
+                    value: DocumentView.list,
+                    icon: Icon(Icons.view_agenda_outlined, size: 18),
+                    tooltip: 'List view',
+                  ),
                   ButtonSegment(
-                      value: DocumentView.json,
-                      icon: Icon(Icons.data_object, size: 18),
-                      tooltip: 'JSON view'),
+                    value: DocumentView.json,
+                    icon: Icon(Icons.data_object, size: 18),
+                    tooltip: 'JSON view',
+                  ),
                   ButtonSegment(
-                      value: DocumentView.table,
-                      icon: Icon(Icons.table_chart_outlined, size: 18),
-                      tooltip: 'Table view'),
+                    value: DocumentView.table,
+                    icon: Icon(Icons.table_chart_outlined, size: 18),
+                    tooltip: 'Table view',
+                  ),
                 ],
                 selected: {view},
                 onSelectionChanged: (s) => onView(s.first),
@@ -334,8 +356,17 @@ class _Toolbar extends StatelessWidget {
                   textAlign: TextAlign.right,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
-                      color: c.text, fontSize: 13, fontWeight: FontWeight.w500),
+                    color: c.text,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
                 ),
+              ),
+              IconButton(
+                tooltip: 'Export',
+                visualDensity: VisualDensity.compact,
+                onPressed: onExport,
+                icon: const Icon(Icons.file_download_outlined, size: 20),
               ),
               IconButton(
                 tooltip: 'Refresh',
@@ -346,7 +377,9 @@ class _Toolbar extends StatelessWidget {
               IconButton(
                 tooltip: 'Previous page',
                 visualDensity: VisualDensity.compact,
-                onPressed: state.hasPrevious && !state.loading ? onPrevious : null,
+                onPressed: state.hasPrevious && !state.loading
+                    ? onPrevious
+                    : null,
                 icon: const Icon(Icons.chevron_left),
               ),
               IconButton(
@@ -428,7 +461,8 @@ class _Results extends StatelessWidget {
       if (state.truncated)
         MessageBanner(
           kind: BannerKind.warning,
-          message: 'This page stopped at ${state.documents.length} documents '
+          message:
+              'This page stopped at ${state.documents.length} documents '
               'because it reached the ${settings.maxPageMegabytes} MB page size '
               'limit. Use a projection or a smaller page size, or raise the '
               'limit in Settings.',
@@ -470,7 +504,9 @@ class _Results extends StatelessWidget {
                   children: [
                     for (final b in banners)
                       Padding(
-                          padding: const EdgeInsets.only(bottom: 6), child: b),
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: b,
+                      ),
                   ],
                 ),
               ),
