@@ -33,8 +33,12 @@ final settingsProvider =
 
 class ConnectionsNotifier extends AsyncNotifier<List<ConnectionProfile>> {
   @override
-  Future<List<ConnectionProfile>> build() =>
-      ref.read(connectionStoreProvider).load();
+  Future<List<ConnectionProfile>> build() => ref
+      .read(connectionStoreProvider)
+      .load()
+      .timeout(const Duration(seconds: 10),
+          onTimeout: () => throw TimeoutException(
+              'Secure storage did not answer within 10 seconds'));
 
   Future<void> _persist(List<ConnectionProfile> list) async {
     state = AsyncData(list);

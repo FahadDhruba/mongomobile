@@ -1,4 +1,6 @@
+import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/services/connection_store.dart';
+import 'package:mongomobile/services/settings_store.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongo_wire/mongo_wire.dart';
 
@@ -215,4 +217,14 @@ class MemoryConnectionStore implements ConnectionStore {
   @override
   Future<void> save(List<ConnectionProfile> profiles) async =>
       saved = [...profiles];
+}
+
+class MemorySettingsStore implements SettingsStore {
+  AppSettings saved = const AppSettings();
+
+  @override
+  Future<AppSettings> load() async => saved;
+
+  @override
+  Future<void> save(AppSettings settings) async => saved = settings;
 }

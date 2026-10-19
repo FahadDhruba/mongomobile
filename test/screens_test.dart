@@ -11,7 +11,6 @@ import 'package:mongomobile/app.dart';
 import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongomobile/state/providers.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'support/fake_client.dart';
 
@@ -99,6 +98,7 @@ Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
         connectorProvider.overrideWithValue(FakeConnector(client)),
         connectionStoreProvider.overrideWithValue(store),
         initialSettingsProvider.overrideWithValue(settings),
+        settingsStoreProvider.overrideWithValue(MemorySettingsStore()),
       ],
       retry: (_, _) => null,
       child: RepaintBoundary(key: _boundary, child: const MongoMobileApp()),
@@ -108,7 +108,6 @@ Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
 
 void main() {
   setUpAll(() async {
-    SharedPreferences.setMockInitialValues({});
     await loadFonts();
   });
 
