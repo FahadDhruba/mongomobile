@@ -4,6 +4,7 @@ import 'package:mongo_wire/mongo_wire.dart';
 
 import '../../theme/app_theme.dart';
 import 'bson_value.dart';
+import 'json_highlight.dart';
 
 /// Actions offered on a document. Null callbacks hide the button.
 class DocumentActions {
@@ -31,7 +32,7 @@ class DocumentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 4, 10),
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -60,8 +61,10 @@ class _ActionRow extends StatelessWidget {
             {Color? color}) =>
         IconButton(
           tooltip: tip,
-          visualDensity: VisualDensity.compact,
-          iconSize: 19,
+          visualDensity: const VisualDensity(horizontal: -3, vertical: -4),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(minWidth: 34, minHeight: 28),
+          iconSize: 18,
           color: color ?? c.muted,
           onPressed: onTap,
           icon: Icon(icon),
@@ -297,14 +300,16 @@ class _JsonDocumentCardState extends State<JsonDocumentCard> {
     final cut = !_full && _text.length > widget.maxChars;
     return Card(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 6, 4, 10),
+        padding: const EdgeInsets.fromLTRB(12, 4, 4, 10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             _ActionRow(document: widget.document, actions: widget.actions),
-            SelectableText(
-              cut ? '${_text.substring(0, widget.maxChars)}\n…' : _text,
-              style: monoStyle(context, size: 12),
+            SelectableText.rich(
+              highlightJson(
+                  cut ? '${_text.substring(0, widget.maxChars)}\n…' : _text,
+                  monoStyle(context, size: 12),
+                  c),
             ),
             if (cut)
               Align(

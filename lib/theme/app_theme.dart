@@ -227,6 +227,8 @@ ThemeData buildTheme(Brightness brightness) {
       ),
     ),
     floatingActionButtonTheme: FloatingActionButtonThemeData(
+      elevation: 2,
+      highlightElevation: 4,
       backgroundColor: c.accentStrong,
       foregroundColor: Colors.white,
     ),

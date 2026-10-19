@@ -6,6 +6,7 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../util/format.dart';
 import '../widgets/common.dart';
+import '../widgets/json_highlight.dart';
 
 final indexesProvider =
     FutureProvider.autoDispose.family<List<Map<String, dynamic>>, Namespace>(
@@ -67,7 +68,8 @@ class IndexesView extends ConsumerWidget {
           ),
           const Spacer(),
           if (indexes.value != null)
-            Text('${indexes.value!.length} indexes',
+            Text(
+                '${indexes.value!.length} ${indexes.value!.length == 1 ? 'index' : 'indexes'}',
                 style: TextStyle(color: c.muted, fontSize: 13)),
           IconButton(
               tooltip: 'Refresh',
@@ -179,7 +181,7 @@ class _IndexCard extends StatelessWidget {
                       style: monoStyle(context,
                           size: 13.5, weight: FontWeight.w700)),
                   const SizedBox(height: 4),
-                  Text(EJson.stringify(key, pretty: false),
+                  Text(shellDocument(key),
                       style: monoStyle(context, size: 12.5, color: c.muted)),
                   if (pills.isNotEmpty) ...[
                     const SizedBox(height: 8),

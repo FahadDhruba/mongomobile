@@ -7,6 +7,7 @@ import 'package:mongo_wire/mongo_wire.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../widgets/common.dart';
+import '../widgets/json_highlight.dart';
 
 enum EditorMode { insert, edit, clone }
 
@@ -34,7 +35,7 @@ class DocumentEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _DocumentEditorScreenState extends ConsumerState<DocumentEditorScreen> {
-  late final _controller = TextEditingController(text: widget.initialText);
+  late final _controller = JsonEditingController(text: widget.initialText);
   Timer? _debounce;
   String? _parseError;
   String? _submitError;
