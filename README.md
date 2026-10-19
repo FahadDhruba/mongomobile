@@ -12,6 +12,7 @@ endorsed by MongoDB, Inc. "MongoDB" is a trademark of MongoDB, Inc.
   <img src="docs/screenshots/05-drawer.png" width="200" alt="Database and collection drawer">
   <img src="docs/screenshots/07-documents-expanded.png" width="200" alt="Documents as cards">
   <img src="docs/screenshots/09-json-view.png" width="200" alt="JSON view">
+  <img src="docs/screenshots/09b-table-view.png" width="200" alt="Table view">
 </p>
 
 ## Install the APK
@@ -49,7 +50,8 @@ uninstall the old version first. Saved connections are removed with it.
 - **Documents:** Compass-style cards with `field: value` lines in a
   monospace font, colours per type (string, number, boolean, date,
   ObjectId, null and others), and nested objects and arrays that expand in
-  place. A JSON view with syntax colouring. Long strings, big arrays and
+  place. A JSON view with syntax colouring, and a Table view with one
+  column per field (tap a cell for its full value). Long strings, big arrays and
   wide documents are cut with **show more** controls.
 - **Query bar:** Filter, Project, Sort and Limit in a monospace font with a
   green **Find** button and **Reset**. Accepts Extended JSON and shell

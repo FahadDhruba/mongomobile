@@ -10,10 +10,11 @@ import '../../util/format.dart';
 import '../widgets/bson_value.dart';
 import '../widgets/common.dart';
 import '../widgets/document_card.dart';
+import '../widgets/document_table.dart';
 import '../widgets/query_bar.dart';
 import 'document_editor_screen.dart';
 
-enum DocumentView { list, json }
+enum DocumentView { list, json, table }
 
 /// The Documents tab: query bar, toolbar, one page of results and the
 /// pagination controls.
@@ -312,6 +313,10 @@ class _Toolbar extends StatelessWidget {
                       value: DocumentView.json,
                       icon: Icon(Icons.data_object, size: 18),
                       tooltip: 'JSON view'),
+                  ButtonSegment(
+                      value: DocumentView.table,
+                      icon: Icon(Icons.table_chart_outlined, size: 18),
+                      tooltip: 'Table view'),
                 ],
                 selected: {view},
                 onSelectionChanged: (s) => onView(s.first),
@@ -449,6 +454,26 @@ class _Results extends StatelessWidget {
                   : 'Change the filter, or press Reset.',
             ),
         ],
+      );
+    }
+    if (view == DocumentView.table) {
+      return DocumentTable(
+        documents: state.documents,
+        firstRowNumber: state.offset + 1,
+        previewLength: settings.stringPreviewLength,
+        actionsFor: actionsFor,
+        header: banners.isEmpty
+            ? null
+            : Padding(
+                padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                child: Column(
+                  children: [
+                    for (final b in banners)
+                      Padding(
+                          padding: const EdgeInsets.only(bottom: 6), child: b),
+                  ],
+                ),
+              ),
       );
     }
     return ListView.separated(

@@ -168,6 +168,17 @@ void main() {
     await tester.tap(find.byTooltip('JSON view'));
     await shot(tester, '09-json-view');
 
+    await tester.tap(find.byTooltip('Table view'));
+    await shot(tester, '09b-table-view');
+    expect(find.text('orderNo'), findsOneWidget);
+    await tester.tap(find.text('1025'));
+    await shot(tester, '09c-table-cell');
+    expect(find.text('Int32'), findsOneWidget);
+    Navigator.of(tester.element(find.text('Int32'))).pop();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('JSON view'));
+    await tester.pumpAndSettle();
+
     // Read-only by default: no edit actions until write mode is on.
     expect(find.byTooltip('Edit'), findsNothing);
     await tester.tap(find.text('Read-only'));
