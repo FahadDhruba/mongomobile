@@ -2,12 +2,21 @@ import 'package:mongo_wire/mongo_wire.dart';
 
 /// How the form signs in.
 enum AuthMethod {
-  none('None'),
-  password('Username / Password'),
-  ldap('LDAP');
+  none('None', ''),
+  password('Username / Password', ''),
+  ldap('LDAP', 'PLAIN'),
+  x509('X.509 certificate', 'MONGODB-X509'),
+  aws('AWS IAM', 'MONGODB-AWS'),
+  oidc('OIDC', 'MONGODB-OIDC');
 
-  const AuthMethod(this.label);
+  const AuthMethod(this.label, this.mechanism);
   final String label;
+
+  /// The `authMechanism` it writes; empty for SCRAM or none.
+  final String mechanism;
+
+  /// Whether the user name is required.
+  bool get needsUsername => this == password || this == ldap || this == aws;
 }
 
 /// `tls=` in the URI: unset (on for SRV, off otherwise), on or off.
@@ -35,6 +44,7 @@ class ConnectionForm {
     this.database = '',
     this.connectTimeoutMs = '',
     this.serverSelectionTimeoutMs = '',
+    this.awsSessionToken = '',
     Map<String, String>? otherOptions,
   }) : hosts = hosts ?? ['localhost:27017'],
        otherOptions = otherOptions ?? {};
@@ -58,6 +68,10 @@ class ConnectionForm {
   String database;
   String connectTimeoutMs;
   String serverSelectionTimeoutMs;
+
+  /// `AWS_SESSION_TOKEN` in `authMechanismProperties`, for temporary AWS
+  /// credentials.
+  String awsSessionToken;
 
   /// Lower-case option name → value, for options without a field.
   Map<String, String> otherOptions;
@@ -126,11 +140,11 @@ class ConnectionForm {
       srv: cs.isSrv,
       hosts: [for (final h in cs.hosts) cs.isSrv ? h.host : '$h'],
       directConnection: take('directconnection') == 'true',
-      auth: mech == 'PLAIN'
-          ? AuthMethod.ldap
-          : cs.username != null
-          ? AuthMethod.password
-          : AuthMethod.none,
+      auth:
+          AuthMethod.values
+              .where((m) => m.mechanism.isNotEmpty && m.mechanism == mech)
+              .firstOrNull ??
+          (cs.username != null ? AuthMethod.password : AuthMethod.none),
       mechanism: mechanisms.contains(mech) ? mech : '',
       username: cs.username ?? '',
       password: cs.password ?? '',
@@ -150,10 +164,26 @@ class ConnectionForm {
       serverSelectionTimeoutMs: take('serverselectiontimeoutms'),
       otherOptions: o,
     );
-    // A mechanism the form has no choice for (e.g. MONGODB-X509) stays an
-    // option.
-    if (mech.isNotEmpty && mech != 'PLAIN' && !mechanisms.contains(mech)) {
+    // A mechanism the form has no choice for (e.g. GSSAPI) stays an option.
+    if (mech.isNotEmpty &&
+        !mechanisms.contains(mech) &&
+        !AuthMethod.values.any((m) => m.mechanism == mech)) {
       form.otherOptions['authmechanism'] = mech;
+    }
+    if (form.auth == AuthMethod.aws) {
+      final props = cs.authMechanismProperties;
+      form.awsSessionToken = props['AWS_SESSION_TOKEN'] ?? '';
+      final rest = {
+        for (final e in props.entries)
+          if (e.key != 'AWS_SESSION_TOKEN') e.key: e.value,
+      };
+      if (rest.isEmpty) {
+        form.otherOptions.remove('authmechanismproperties');
+      } else {
+        form.otherOptions['authmechanismproperties'] = rest.entries
+            .map((e) => '${e.key}:${e.value}')
+            .join(',');
+      }
     }
     return form;
   }
@@ -172,8 +202,13 @@ class ConnectionForm {
     if (directConnection && (srv || h.length > 1)) {
       return 'Direct connection needs a single mongodb:// host';
     }
-    if (auth != AuthMethod.none && username.trim().isEmpty) {
-      return 'Enter a username';
+    if (auth.needsUsername && username.trim().isEmpty) {
+      return auth == AuthMethod.aws
+          ? 'Enter the AWS access key ID'
+          : 'Enter a username';
+    }
+    if (auth == AuthMethod.aws && password.isEmpty) {
+      return 'Enter the AWS secret access key';
     }
     for (final (label, v) in [
       ('Connect timeout', connectTimeoutMs),
@@ -191,7 +226,9 @@ class ConnectionForm {
     final b = StringBuffer(srv ? 'mongodb+srv://' : 'mongodb://');
     if (auth != AuthMethod.none && username.trim().isNotEmpty) {
       b.write(Uri.encodeComponent(username.trim()));
-      if (password.isNotEmpty) b.write(':${Uri.encodeComponent(password)}');
+      if (password.isNotEmpty && auth != AuthMethod.x509) {
+        b.write(':${Uri.encodeComponent(password)}');
+      }
       b.write('@');
     }
     b.write(hosts.map((x) => x.trim()).where((x) => x.isNotEmpty).join(','));
@@ -201,11 +238,17 @@ class ConnectionForm {
     }
     final options = <String, String>{
       if (directConnection) 'directConnection': 'true',
-      if (auth == AuthMethod.ldap) 'authMechanism': 'PLAIN',
+      if (auth.mechanism.isNotEmpty) 'authMechanism': auth.mechanism,
       if (auth == AuthMethod.password && mechanism.isNotEmpty)
         'authMechanism': mechanism,
-      if (auth != AuthMethod.none && authSource.trim().isNotEmpty)
+      if ((auth == AuthMethod.password || auth == AuthMethod.ldap) &&
+          authSource.trim().isNotEmpty)
         'authSource': authSource.trim(),
+      if (auth == AuthMethod.aws && awsSessionToken.trim().isNotEmpty)
+        'authMechanismProperties': [
+          'AWS_SESSION_TOKEN:${awsSessionToken.trim()}',
+          ?otherOptions['authmechanismproperties'],
+        ].join(','),
       if (tls == TlsMode.on) 'tls': 'true',
       if (tls == TlsMode.off) 'tls': 'false',
       if (allowInvalidCertificates) 'tlsAllowInvalidCertificates': 'true',
@@ -218,7 +261,10 @@ class ConnectionForm {
       if (serverSelectionTimeoutMs.trim().isNotEmpty)
         'serverSelectionTimeoutMS': serverSelectionTimeoutMs.trim(),
       for (final MapEntry(:key, :value) in otherOptions.entries)
-        if (!_fields.containsKey(key) || key == 'authmechanism')
+        if ((!_fields.containsKey(key) || key == 'authmechanism') &&
+            !(key == 'authmechanismproperties' &&
+                auth == AuthMethod.aws &&
+                awsSessionToken.trim().isNotEmpty))
           _knownSpelling[key] ?? key: value,
     };
     if (options.isNotEmpty) {

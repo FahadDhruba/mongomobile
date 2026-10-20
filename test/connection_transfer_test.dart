@@ -7,6 +7,21 @@ import 'package:mongomobile/services/connection_transfer.dart';
 void main() {
   final profiles = [
     ConnectionProfile(
+      id: 't3',
+      name: 'Behind SSH',
+      uri: 'mongodb://db.internal:27017',
+      tunnel: const TunnelSettings(
+        kind: TunnelKind.ssh,
+        host: 'bastion',
+        port: 22,
+        username: 'ops',
+        password: 'sshpw',
+        privateKeyPem: 'KEY',
+        hostKey: 'SHA256:abc',
+      ),
+      clientCertificatePem: 'CERT',
+    ),
+    ConnectionProfile(
       id: 'a1',
       name: 'Prod',
       uri: 'mongodb+srv://app:p%40ss@cluster0.ab.mongodb.net/?retryWrites=true',
@@ -34,7 +49,7 @@ void main() {
     expect(text, isNot(contains('p%40ss')));
     final j = jsonDecode(text) as Map;
     expect(j['type'], 'Compass Connections');
-    final c = (j['connections'] as List).first as Map;
+    final c = (j['connections'] as List)[1] as Map;
     expect(
       (c['connectionOptions'] as Map)['connectionString'],
       'mongodb+srv://app@cluster0.ab.mongodb.net/?retryWrites=true',
@@ -43,11 +58,17 @@ void main() {
     expect(needsPassphrase(text), isFalse);
 
     final back = await importConnections(text);
+    expect(text, isNot(contains('sshpw')));
+    expect(text, isNot(contains('CERT')));
     expect(back.withoutPasswords, 1);
-    expect(back.profiles.first.group, 'Work');
-    expect(back.profiles.first.favorite, isTrue);
-    expect(back.profiles.first.colorIndex, 3);
-    expect(back.profiles.first.lastUsed, DateTime.utc(2026, 5, 1));
+    final ssh = back.profiles.first.tunnel!;
+    expect(ssh.host, 'bastion');
+    expect(ssh.hostKey, 'SHA256:abc');
+    expect(ssh.password, isEmpty);
+    expect(back.profiles[1].group, 'Work');
+    expect(back.profiles[1].favorite, isTrue);
+    expect(back.profiles[1].colorIndex, 3);
+    expect(back.profiles[1].lastUsed, DateTime.utc(2026, 5, 1));
     expect(back.profiles.last.allowInvalidCertificates, isTrue);
   });
 
@@ -72,8 +93,12 @@ void main() {
     );
     final back = await importConnections(text, passphrase: 'correct horse');
     expect(back.withoutPasswords, 0);
+    expect(text, isNot(contains('sshpw')));
+    expect(back.profiles.first.tunnel!.password, 'sshpw');
+    expect(back.profiles.first.tunnel!.privateKeyPem, 'KEY');
+    expect(back.profiles.first.clientCertificatePem, 'CERT');
     expect(
-      back.profiles.first.uri,
+      back.profiles[1].uri,
       'mongodb+srv://app:p%40ss@cluster0.ab.mongodb.net/?retryWrites=true',
     );
   });

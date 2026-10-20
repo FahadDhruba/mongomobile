@@ -4,11 +4,14 @@ import 'package:mongo_wire/mongo_wire.dart';
 
 import '../../models/connection_profile.dart';
 import '../../services/connection_form.dart';
+import '../../services/connection_opener.dart';
+import '../../services/oidc_flow.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../util/format.dart';
 import '../widgets/common.dart';
 import '../widgets/connection_form_view.dart';
+import '../widgets/tunnel_editor.dart';
 
 /// Create or edit a saved connection, as a connection string or as form
 /// fields, with a Test button.
@@ -29,6 +32,13 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
   late final _ca = TextEditingController(
     text: widget.profile?.caCertificatePem ?? '',
   );
+  late final _clientCert = TextEditingController(
+    text: widget.profile?.clientCertificatePem ?? '',
+  );
+  late final _clientKeyPassword = TextEditingController(
+    text: widget.profile?.clientKeyPassword ?? '',
+  );
+  late TunnelSettings? _tunnel = widget.profile?.tunnel;
   late bool _allowInvalid = widget.profile?.allowInvalidCertificates ?? false;
   late int _color = widget.profile?.colorIndex ?? 0;
   bool _showUri = false;
@@ -50,6 +60,8 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     _name.dispose();
     _uri.dispose();
     _ca.dispose();
+    _clientCert.dispose();
+    _clientKeyPassword.dispose();
     super.dispose();
   }
 
@@ -88,6 +100,18 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
       setState(() => _uriError = e);
       return false;
     }
+    final t = _tunnel;
+    if (t != null && t.host.isEmpty) {
+      setState(
+        () => _uriError =
+            'Enter the ${t.kind == TunnelKind.ssh ? 'SSH' : 'proxy'} host',
+      );
+      return false;
+    }
+    if (t != null && t.kind == TunnelKind.ssh && t.username.isEmpty) {
+      setState(() => _uriError = 'Enter the SSH user');
+      return false;
+    }
     try {
       ConnectionString.parse(_uri.text);
       setState(() => _uriError = null);
@@ -106,6 +130,15 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     caCertificatePem: _ca.text.trim().isEmpty ? null : _ca.text.trim(),
     colorIndex: _color,
     lastUsed: widget.profile?.lastUsed,
+    favorite: widget.profile?.favorite ?? false,
+    group: widget.profile?.group ?? '',
+    tunnel: _tunnel,
+    clientCertificatePem: _clientCert.text.trim().isEmpty
+        ? null
+        : _clientCert.text.trim(),
+    clientKeyPassword: _clientKeyPassword.text.isEmpty
+        ? null
+        : _clientKeyPassword.text,
   );
 
   Future<void> _test() async {
@@ -116,11 +149,17 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     });
     final p = _profile();
     final sw = Stopwatch()..start();
-    MongoClient? client;
+    OpenedConnection? opened;
     try {
-      client = await ref
-          .read(connectorProvider)
-          .connect(p.uri, p.connectOptions);
+      opened = await openConnection(
+        ref.read(connectorProvider),
+        p,
+        oidc: OidcBrowserFlow(openUrl: ref.read(nativeBrowserProvider).open),
+      );
+      final client = opened.client;
+      if (opened.profile.tunnel?.hostKey != _tunnel?.hostKey) {
+        _tunnel = opened.profile.tunnel;
+      }
       final s = client.server;
       final dbs = await client.listDatabases();
       setState(
@@ -134,7 +173,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     } on Object catch (e) {
       setState(() => _result = _TestResult.failed(describeError(e)));
     } finally {
-      await client?.close();
+      await opened?.close();
       if (mounted) setState(() => _testing = false);
     }
   }
@@ -217,8 +256,8 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
               const SizedBox(height: 6),
               Text(
                 'mongodb:// and mongodb+srv:// are supported, with TLS, '
-                'SCRAM-SHA-256 and SCRAM-SHA-1. Encode special characters in the '
-                'password, e.g. @ as %40.',
+                'SCRAM, LDAP (PLAIN), X.509, AWS IAM and OIDC. Encode special '
+                'characters in the password, e.g. @ as %40.',
                 style: TextStyle(color: c.muted, fontSize: 12),
               ),
             ],
@@ -255,7 +294,10 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
               child: ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 title: const Text('Advanced TLS'),
-                initiallyExpanded: _allowInvalid || _ca.text.isNotEmpty,
+                initiallyExpanded:
+                    _allowInvalid ||
+                    _ca.text.isNotEmpty ||
+                    _clientCert.text.isNotEmpty,
                 children: [
                   SwitchListTile(
                     contentPadding: EdgeInsets.zero,
@@ -281,6 +323,52 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                  TextField(
+                    controller: _clientCert,
+                    style: monoStyle(context, size: 11.5),
+                    maxLines: 6,
+                    minLines: 3,
+                    autocorrect: false,
+                    decoration: const InputDecoration(
+                      labelText: 'Client certificate and key (PEM, optional)',
+                      hintText:
+                          'For X.509 sign-in: CERTIFICATE and PRIVATE KEY',
+                      alignLabelWithHint: true,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: _clientKeyPassword,
+                    obscureText: true,
+                    decoration: const InputDecoration(
+                      labelText: 'Key password (optional)',
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('SSH tunnel or proxy'),
+                subtitle: _tunnel == null
+                    ? null
+                    : Text(
+                        _tunnel!.display,
+                        style: TextStyle(color: c.muted, fontSize: 12),
+                      ),
+                initiallyExpanded: _tunnel != null,
+                childrenPadding: const EdgeInsets.only(bottom: 8),
+                children: [
+                  TunnelEditor(
+                    key: ValueKey(_tunnel?.hostKey),
+                    initial: _tunnel,
+                    onChanged: (t) => setState(() => _tunnel = t),
+                  ),
                 ],
               ),
             ),

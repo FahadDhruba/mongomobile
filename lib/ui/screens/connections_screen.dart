@@ -151,6 +151,7 @@ class ConnectionsScreen extends ConsumerWidget {
             TextButton(
               onPressed: () {
                 cancelled = true;
+                ref.read(sessionProvider.notifier).cancelSignIn();
                 Navigator.pop(ctx);
               },
               child: const Text('Cancel'),

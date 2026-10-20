@@ -106,3 +106,11 @@ class NativeInstaller {
   Future<void> install(String path) =>
       _channel.invokeMethod<void>('install', {'path': path});
 }
+
+/// Opens web pages in the user's browser, implemented in MainActivity.
+class NativeBrowser {
+  static const _channel = MethodChannel('com.mongomobile.app/browser');
+
+  Future<void> open(Uri url) =>
+      _channel.invokeMethod<void>('open', {'url': url.toString()});
+}

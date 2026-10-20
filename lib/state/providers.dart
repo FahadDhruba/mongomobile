@@ -6,8 +6,10 @@ import 'package:mongo_wire/mongo_wire.dart';
 import '../models/app_settings.dart';
 import '../models/connection_profile.dart';
 import '../services/biometrics.dart';
+import '../services/connection_opener.dart';
 import '../services/connection_store.dart';
 import '../services/native.dart';
+import '../services/oidc_flow.dart';
 import '../services/settings_store.dart';
 import '../services/updater.dart';
 
@@ -21,6 +23,7 @@ final connectionStoreProvider = Provider<ConnectionStore>(
 final settingsStoreProvider = Provider<SettingsStore>((_) => SettingsStore());
 final biometricsProvider = Provider<Biometrics>((_) => Biometrics());
 final nativeFilesProvider = Provider<NativeFiles>((_) => NativeFiles());
+final nativeBrowserProvider = Provider<NativeBrowser>((_) => NativeBrowser());
 final updaterProvider = Provider<Updater>((_) => Updater());
 
 /// A newer release, checked once per launch when automatic checks are on.
@@ -106,10 +109,14 @@ class Session {
     required this.profile,
     required this.client,
     this.readOnly = true,
+    this.tunnel,
   });
 
   final ConnectionProfile profile;
   final MongoClient client;
+
+  /// The SSH tunnel or SOCKS5 proxy the client runs over.
+  final Tunnel? tunnel;
 
   /// Writes are blocked until the user turns on write mode.
   final bool readOnly;
@@ -118,6 +125,7 @@ class Session {
     profile: profile,
     client: client,
     readOnly: readOnly ?? this.readOnly,
+    tunnel: tunnel,
   );
 }
 
@@ -125,16 +133,36 @@ class SessionNotifier extends Notifier<Session?> {
   @override
   Session? build() => null;
 
+  OidcBrowserFlow? _oidc;
+
   /// Connects and makes the result the current session.
   Future<void> connect(ConnectionProfile profile) async {
     await disconnect();
-    final client = await ref
-        .read(connectorProvider)
-        .connect(profile.uri, profile.connectOptions);
-    state = Session(profile: profile, client: client);
+    final oidc = _oidc = OidcBrowserFlow(
+      openUrl: ref.read(nativeBrowserProvider).open,
+    );
+    final opened = await openConnection(
+      ref.read(connectorProvider),
+      profile,
+      oidc: oidc,
+    );
+    _oidc = null;
+    state = Session(
+      profile: opened.profile,
+      client: opened.client,
+      tunnel: opened.tunnel,
+    );
     ref.read(selectionProvider.notifier).clear();
-    unawaited(ref.read(connectionsProvider.notifier).markUsed(profile.id));
+    final connections = ref.read(connectionsProvider.notifier);
+    if (!identical(opened.profile, profile)) {
+      // The SSH host key was seen for the first time: remember it.
+      await connections.upsert(opened.profile);
+    }
+    unawaited(connections.markUsed(profile.id));
   }
+
+  /// Stops a browser sign-in that [connect] is waiting for.
+  void cancelSignIn() => _oidc?.cancel();
 
   void setReadOnly(bool readOnly) {
     final s = state;
@@ -145,6 +173,7 @@ class SessionNotifier extends Notifier<Session?> {
     final s = state;
     state = null;
     await s?.client.close();
+    await s?.tunnel?.close();
   }
 }
 

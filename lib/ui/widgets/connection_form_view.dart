@@ -69,6 +69,14 @@ class _ConnectionFormViewState extends State<ConnectionFormView> {
     ),
   );
 
+  Widget _note(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Text(
+      text,
+      style: TextStyle(color: context.colors.muted, fontSize: 12.5),
+    ),
+  );
+
   Widget _dropdown<T>(
     String label,
     T value,
@@ -167,7 +175,7 @@ class _ConnectionFormViewState extends State<ConnectionFormView> {
         _dropdown('Method', f.auth, {
           for (final m in AuthMethod.values) m: m.label,
         }, (v) => f.auth = v),
-        if (f.auth != AuthMethod.none) ...[
+        if (f.auth == AuthMethod.password || f.auth == AuthMethod.ldap) ...[
           _text('Username', f.username, (v) => f.username = v),
           _text(
             'Password',
@@ -195,6 +203,65 @@ class _ConnectionFormViewState extends State<ConnectionFormView> {
               for (final m in ConnectionForm.mechanisms)
                 m: m.isEmpty ? 'Default (the server picks)' : m,
             }, (v) => f.mechanism = v),
+        ],
+        if (f.auth == AuthMethod.x509) ...[
+          _note(
+            'Add the client certificate and its key under "Client certificate" '
+            'below. TLS is needed.',
+          ),
+          _text(
+            'Subject (optional)',
+            f.username,
+            (v) => f.username = v,
+            hint: 'Taken from the certificate when empty',
+          ),
+        ],
+        if (f.auth == AuthMethod.aws) ...[
+          _text('Access key ID', f.username, (v) => f.username = v),
+          _text(
+            'Secret access key',
+            f.password,
+            (v) => f.password = v,
+            obscure: !_showPassword,
+            suffix: IconButton(
+              tooltip: _showPassword ? 'Hide' : 'Show',
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+              icon: Icon(
+                _showPassword ? Icons.visibility_off : Icons.visibility,
+              ),
+            ),
+          ),
+          _text(
+            'Session token (optional)',
+            f.awsSessionToken,
+            (v) => f.awsSessionToken = v,
+            hint: 'For temporary credentials',
+          ),
+        ],
+        if (f.auth == AuthMethod.oidc) ...[
+          _note(
+            'Signs in at your identity provider in the browser when you '
+            'connect. Paste an access token instead to skip that.',
+          ),
+          _text(
+            'Username (optional)',
+            f.username,
+            (v) => f.username = v,
+            hint: 'Suggested on the sign-in page',
+          ),
+          _text(
+            'Access token (optional)',
+            f.password,
+            (v) => f.password = v,
+            obscure: !_showPassword,
+            suffix: IconButton(
+              tooltip: _showPassword ? 'Hide' : 'Show',
+              onPressed: () => setState(() => _showPassword = !_showPassword),
+              icon: Icon(
+                _showPassword ? Icons.visibility_off : Icons.visibility,
+              ),
+            ),
+          ),
         ],
         _section('TLS'),
         _dropdown('TLS', f.tls, const {

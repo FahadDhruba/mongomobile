@@ -108,6 +108,29 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
 
+        MethodChannel(messenger, "com.mongomobile.app/browser")
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "open" -> {
+                        val url = call.argument<String>("url")
+                        if (url == null) {
+                            result.error("args", "No URL", null)
+                        } else {
+                            try {
+                                startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                )
+                                result.success(null)
+                            } catch (e: Exception) {
+                                result.error("open", e.message, null)
+                            }
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
+
         MethodChannel(messenger, "com.mongomobile.app/updater")
             .setMethodCallHandler { call, result ->
                 when (call.method) {

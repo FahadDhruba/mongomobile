@@ -39,7 +39,7 @@ Future<String> exportConnections(
   List<ConnectionProfile> profiles, {
   String? passphrase,
 }) async {
-  final secrets = <String, String>{};
+  final secrets = <String, Map<String, dynamic>>{};
   final connections = <Map<String, dynamic>>[];
   final extra = <String, dynamic>{};
   for (final p in profiles) {
@@ -49,7 +49,21 @@ Future<String> exportConnections(
     } on MongoException {
       password = null;
     }
-    if (password != null) secrets[p.id] = password;
+    final secret = <String, dynamic>{
+      'password': ?password,
+      if (p.tunnel case final t?)
+        if (t.password.isNotEmpty ||
+            t.privateKeyPem.isNotEmpty ||
+            t.passphrase.isNotEmpty)
+          'tunnel': {
+            if (t.password.isNotEmpty) 'password': t.password,
+            if (t.privateKeyPem.isNotEmpty) 'privateKeyPem': t.privateKeyPem,
+            if (t.passphrase.isNotEmpty) 'passphrase': t.passphrase,
+          },
+      'clientCertificatePem': ?p.clientCertificatePem,
+      'clientKeyPassword': ?p.clientKeyPassword,
+    };
+    if (secret.isNotEmpty) secrets[p.id] = secret;
     connections.add({
       'id': p.id,
       'connectionOptions': {'connectionString': withoutPassword(p.uri)},
@@ -69,6 +83,7 @@ Future<String> exportConnections(
       if (p.group.isNotEmpty) 'group': p.group,
       if (p.allowInvalidCertificates) 'allowInvalidCertificates': true,
       if (p.caCertificatePem != null) 'caCertificatePem': p.caCertificatePem,
+      if (p.tunnel != null) 'tunnel': p.tunnel!.toJson(secrets: false),
     };
   }
   final mm = <String, dynamic>{'version': 1, 'connections': extra};
@@ -143,8 +158,22 @@ Future<ImportedConnections> importConnections(
     }
     final id = '${c['id'] ?? ConnectionProfile.newId()}';
     final x = extra[id] as Map? ?? const {};
-    final password = secrets[id];
+    // Older files kept only the password, as a string.
+    final secret = switch (secrets[id]) {
+      final String p => {'password': p},
+      final Map m => m,
+      _ => const {},
+    };
+    final password = secret['password'];
     if (password is String) uri = withPassword(uri, password);
+    var tunnel = TunnelSettings.fromJson(x['tunnel']);
+    if (tunnel != null && secret['tunnel'] is Map) {
+      final t = secret['tunnel'] as Map;
+      tunnel = TunnelSettings.fromJson({
+        ...tunnel.toJson(),
+        ...t.cast<String, dynamic>(),
+      });
+    }
     final cs = ConnectionString.parse(uri);
     if (cs.username != null && cs.password == null) missing++;
     final fav = c['favorite'] as Map?;
@@ -167,6 +196,9 @@ Future<ImportedConnections> importConnections(
         group: x['group'] as String? ?? '',
         allowInvalidCertificates: x['allowInvalidCertificates'] == true,
         caCertificatePem: x['caCertificatePem'] as String?,
+        tunnel: tunnel,
+        clientCertificatePem: secret['clientCertificatePem'] as String?,
+        clientKeyPassword: secret['clientKeyPassword'] as String?,
         lastUsed: lastUsed,
       ),
     );

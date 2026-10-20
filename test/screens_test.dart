@@ -1100,6 +1100,49 @@ void main() {
         'db.orders.insertOne({ x: 1 })');
   });
 
+  testWidgets('SSH tunnel settings are saved with the connection',
+      (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(
+            id: 'a',
+            name: 'Internal',
+            uri: 'mongodb://db.internal:27017',
+            favorite: true,
+            group: 'Work'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Connection actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('SSH tunnel or proxy'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('SSH tunnel or proxy'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('SSH'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'SSH host'), 'bastion');
+    await tester.enterText(find.widgetWithText(TextField, 'SSH user'), 'ops');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'SSH password (or use a key)'), 'pw');
+    await shot(tester, '29-ssh-tunnel');
+    await tester.scrollUntilVisible(find.text('Save'), 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    final saved = store.saved.single;
+    expect(saved.tunnel!.kind, TunnelKind.ssh);
+    expect(saved.tunnel!.host, 'bastion');
+    expect(saved.tunnel!.port, 22);
+    expect(saved.tunnel!.username, 'ops');
+    expect(saved.tunnel!.password, 'pw');
+    expect(saved.favorite, isTrue);
+    expect(saved.group, 'Work');
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

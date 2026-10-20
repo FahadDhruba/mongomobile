@@ -85,4 +85,33 @@ void main() {
       'Connect timeout must be a number of milliseconds',
     );
   });
+
+  test('X.509, AWS and OIDC sign-in', () {
+    final x = ConnectionForm.fromUri(
+      'mongodb://h:1/?authMechanism=MONGODB-X509&tls=true',
+    );
+    expect(x.auth, AuthMethod.x509);
+    expect(x.otherOptions, isEmpty);
+    expect(x.error, isNull);
+    expect(x.toUri(), 'mongodb://h:1/?authMechanism=MONGODB-X509&tls=true');
+
+    final aws = ConnectionForm.fromUri(
+      'mongodb+srv://AKID:se%2Fcret@c.mongodb.net/?authMechanism=MONGODB-AWS'
+      '&authMechanismProperties=AWS_SESSION_TOKEN:tok',
+    );
+    expect(aws.auth, AuthMethod.aws);
+    expect(aws.username, 'AKID');
+    expect(aws.password, 'se/cret');
+    expect(aws.awsSessionToken, 'tok');
+    final back = ConnectionString.parse(aws.toUri());
+    expect(back.authMechanism, 'MONGODB-AWS');
+    expect(back.authMechanismProperties, {'AWS_SESSION_TOKEN': 'tok'});
+    expect(back.authSource, r'$external');
+    aws.password = '';
+    expect(aws.error, 'Enter the AWS secret access key');
+
+    final oidc = ConnectionForm(hosts: ['h:1'], auth: AuthMethod.oidc);
+    expect(oidc.error, isNull);
+    expect(oidc.toUri(), 'mongodb://h:1/?authMechanism=MONGODB-OIDC');
+  });
 }
