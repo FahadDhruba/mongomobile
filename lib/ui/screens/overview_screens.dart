@@ -6,6 +6,7 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../util/format.dart';
 import '../widgets/common.dart';
+import 'collection_admin.dart';
 
 /// Shown right after connecting: the server and its databases.
 class ServerOverview extends ConsumerWidget {
@@ -64,10 +65,22 @@ class ServerOverview extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 16),
-          Text('Databases',
-              style: TextStyle(
-                  color: c.muted, fontWeight: FontWeight.w700, fontSize: 12.5)),
-          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: Text('Databases',
+                    style: TextStyle(
+                        color: c.muted,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12.5)),
+              ),
+              TextButton.icon(
+                onPressed: () => createCollectionFlow(context, ref),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Create database'),
+              ),
+            ],
+          ),
           ...dbs.when(
             loading: () => [const LoadingView()],
             error: (e, _) => [MessageBanner(message: describeError(e))],
@@ -119,18 +132,36 @@ class DatabaseOverview extends ConsumerWidget {
           children: [MessageBanner(message: describeError(e))],
         ),
         data: (list) => list.isEmpty
-            ? ListView(children: const [
-                EmptyState(
+            ? ListView(children: [
+                const EmptyState(
                   icon: Icons.folder_off_outlined,
                   title: 'No collections',
                   message: 'This database has no collections you can see.',
                 ),
+                Center(
+                  child: TextButton.icon(
+                    onPressed: () => createCollectionFlow(context, ref, db: db),
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Create collection'),
+                  ),
+                ),
               ])
             : ListView.separated(
-                padding: const EdgeInsets.all(12),
-                itemCount: list.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (_, i) => _CollectionCard(db: db, info: list[i]),
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
+                itemCount: list.length + 1,
+                separatorBuilder: (_, i) =>
+                    SizedBox(height: i == 0 ? 0 : 8),
+                itemBuilder: (_, i) => i == 0
+                    ? Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: () =>
+                              createCollectionFlow(context, ref, db: db),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Create collection'),
+                        ),
+                      )
+                    : _CollectionCard(db: db, info: list[i - 1]),
               ),
       ),
     );

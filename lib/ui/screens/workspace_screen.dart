@@ -7,6 +7,7 @@ import '../widgets/common.dart';
 import 'package:mongo_wire/mongo_wire.dart';
 
 import '../../state/documents_controller.dart';
+import 'collection_admin.dart';
 import 'collection_screen.dart';
 import 'edit_view_screen.dart';
 import 'export_sheet.dart';
@@ -103,7 +104,14 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (_) => DropCollectionDialog(namespace: ns),
+      builder: (_) => TypeToConfirmDialog(
+        title: 'Drop collection?',
+        message:
+            'This permanently deletes $ns with all its documents and '
+            'indexes. It cannot be undone.',
+        name: ns.collection,
+        confirmLabel: 'Drop',
+      ),
     );
     if (ok != true || !mounted) return;
     try {
@@ -188,6 +196,7 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
               onTap: () => _toggleWrites(readOnly),
             ),
             PopupMenuButton<String>(
+              tooltip: 'More options',
               onSelected: (v) {
                 switch (v) {
                   case 'export':
@@ -200,6 +209,14 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                     _dropCollection(ns!);
                   case 'editView':
                     _editView(ns!);
+                  case 'rename':
+                    renameCollectionFlow(context, ref, ns!);
+                  case 'createDb':
+                    createCollectionFlow(context, ref);
+                  case 'createColl':
+                    createCollectionFlow(context, ref, db: selection.db);
+                  case 'dropDb':
+                    dropDatabaseFlow(context, ref, selection.db!);
                   case 'settings':
                     Navigator.push(
                       context,
@@ -220,12 +237,37 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                     value: 'export',
                     child: Text('Export collection…'),
                   ),
+                  if (!_isView(ns))
+                    const PopupMenuItem(
+                      value: 'rename',
+                      child: Text('Rename collection…'),
+                    ),
                   PopupMenuItem(
                     value: 'drop',
                     child: Text(
                       'Drop collection…',
                       style: TextStyle(color: c.danger),
                     ),
+                  ),
+                  const PopupMenuDivider(),
+                ] else if (selection.db case final db?) ...[
+                  const PopupMenuItem(
+                    value: 'createColl',
+                    child: Text('Create collection…'),
+                  ),
+                  if (!protectedDatabases.contains(db))
+                    PopupMenuItem(
+                      value: 'dropDb',
+                      child: Text(
+                        'Drop database…',
+                        style: TextStyle(color: c.danger),
+                      ),
+                    ),
+                  const PopupMenuDivider(),
+                ] else ...[
+                  const PopupMenuItem(
+                    value: 'createDb',
+                    child: Text('Create database…'),
                   ),
                   const PopupMenuDivider(),
                 ],
@@ -289,77 +331,6 @@ class _WriteModeChip extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Asks the user to type the collection name before dropping it, like
-/// Compass does.
-class DropCollectionDialog extends StatefulWidget {
-  const DropCollectionDialog({super.key, required this.namespace});
-  final Namespace namespace;
-
-  @override
-  State<DropCollectionDialog> createState() => _DropCollectionDialogState();
-}
-
-class _DropCollectionDialogState extends State<DropCollectionDialog> {
-  final _name = TextEditingController();
-
-  @override
-  void dispose() {
-    _name.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    final matches = _name.text == widget.namespace.collection;
-    return AlertDialog(
-      title: const Text('Drop collection?'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'This permanently deletes ${widget.namespace} with all its '
-            'documents and indexes. It cannot be undone.',
-          ),
-          const SizedBox(height: 12),
-          Text.rich(
-            TextSpan(
-              children: [
-                const TextSpan(text: 'Type '),
-                TextSpan(
-                  text: widget.namespace.collection,
-                  style: monoStyle(context, weight: FontWeight.w700),
-                ),
-                const TextSpan(text: ' to confirm.'),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _name,
-            autofocus: true,
-            autocorrect: false,
-            style: monoStyle(context),
-            onChanged: (_) => setState(() {}),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(backgroundColor: c.danger),
-          onPressed: matches ? () => Navigator.pop(context, true) : null,
-          child: const Text('Drop'),
-        ),
-      ],
     );
   }
 }

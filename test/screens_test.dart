@@ -503,6 +503,110 @@ void main() {
     expect(find.text('Import into customers'), findsNothing);
   });
 
+  testWidgets('create, rename and drop databases and collections',
+      (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+
+    // Read-only blocks it.
+    await tester.tap(find.text('Create database'));
+    await tester.pumpAndSettle();
+    expect(find.text('Turn on write mode to create databases'), findsOneWidget);
+
+    void clearSnacks() => tester
+        .state<ScaffoldMessengerState>(find.byType(ScaffoldMessenger))
+        .removeCurrentSnackBar();
+    clearSnacks();
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create database'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter a database name'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Database name'), 'metrics');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Collection name'), 'readings');
+    await tester.tap(find.text('Time series'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Time field'), 'ts');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Meta field (optional)'), 'sensor');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Expire after seconds (optional)'),
+        '86400');
+    await shot(tester, '21-create-collection');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(client.collectionOptions[const Namespace('metrics', 'readings')], {
+      'timeseries': {
+        'timeField': 'ts',
+        'metaField': 'sensor',
+        'granularity': 'seconds',
+      },
+      'expireAfterSeconds': 86400,
+    });
+    expect(find.text('Collection readings created'), findsOneWidget);
+    clearSnacks();
+
+    // Rename it from the collection menu.
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rename collection…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'New name'), 'r2');
+    await tester.pump();
+    await tester.tap(find.text('Rename'));
+    await tester.pumpAndSettle();
+    expect(client.data['metrics']!.keys, ['r2']);
+    expect(find.text('Renamed readings to r2'), findsOneWidget);
+    clearSnacks();
+
+    // Back up to the database, add a capped collection, then drop it all.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create collection'));
+    await tester.pumpAndSettle();
+    expect(find.text('In metrics'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Collection name'), 'log');
+    await tester.tap(find.text('Capped'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enter the capped size in bytes'), findsOneWidget);
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Size in bytes'), '1048576');
+    await tester.tap(find.text('Create'));
+    await tester.pumpAndSettle();
+    expect(client.collectionOptions[const Namespace('metrics', 'log')],
+        {'capped': true, 'size': 1048576});
+    clearSnacks();
+
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Drop database…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'metrics');
+    await tester.pump();
+    await tester.tap(find.text('Drop'));
+    await tester.pumpAndSettle();
+    expect(client.data.containsKey('metrics'), isFalse);
+    expect(find.text('Database metrics dropped'), findsOneWidget);
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()
