@@ -71,4 +71,33 @@ void main() {
     expect(numericValue(const BsonLong(3)), 3);
     expect(numericValue('x'), isNull);
   });
+
+  test('generates a \$jsonSchema validator', () {
+    final v = jsonSchemaOf(SchemaAnalysis.of(docs))[r'$jsonSchema'] as Map;
+    expect(v['bsonType'], 'object');
+    expect(v['required'], ['_id', 'age']);
+    final p = v['properties'] as Map;
+    expect(p['_id'], {'bsonType': 'int'});
+    expect((p['age'] as Map)['bsonType'], ['int', 'null', 'long', 'double']);
+    expect(p['address'], {
+      'bsonType': 'object',
+      'required': ['city'],
+      'properties': {
+        'city': {'bsonType': 'string'},
+        'zip': {'bsonType': 'string'},
+      },
+    });
+    expect(p['items'], {
+      'bsonType': 'array',
+      'items': {
+        'bsonType': 'object',
+        'required': ['sku'],
+        'properties': {
+          'sku': {'bsonType': 'string'},
+          'qty': {'bsonType': 'int'},
+        },
+      },
+    });
+    expect((p['tags'] as Map)['items'], {'bsonType': 'string'});
+  });
 }

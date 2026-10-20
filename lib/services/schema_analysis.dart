@@ -166,3 +166,69 @@ List<int> histogram(List<double> values, {int bins = 12}) {
   }
   return out;
 }
+
+const _jsonSchemaTypes = {
+  'String': 'string',
+  'Int32': 'int',
+  'Int64': 'long',
+  'Double': 'double',
+  'Decimal128': 'decimal',
+  'Boolean': 'bool',
+  'Date': 'date',
+  'ObjectId': 'objectId',
+  'Null': 'null',
+  'Object': 'object',
+  'Array': 'array',
+  'Binary': 'binData',
+  'UUID': 'binData',
+  'BSONRegExp': 'regex',
+  'Timestamp': 'timestamp',
+  'Code': 'javascript',
+  'Symbol': 'symbol',
+  'MinKey': 'minKey',
+  'MaxKey': 'maxKey',
+  'Undefined': 'undefined',
+  'DBPointer': 'dbPointer',
+};
+
+/// A `$jsonSchema` validator describing the sampled documents: the types
+/// seen for each field, nested documents and arrays of documents, and the
+/// fields present in every sampled document as `required`.
+Map<String, dynamic> jsonSchemaOf(SchemaAnalysis analysis) => {
+  r'$jsonSchema': _objectSchema(analysis.sortedFields, analysis.documents),
+};
+
+Map<String, dynamic> _objectSchema(List<SchemaField> fields, int documents) {
+  final required = [
+    for (final f in fields)
+      if (f.count == documents && documents > 0) f.name,
+  ];
+  return {
+    'bsonType': 'object',
+    if (required.isNotEmpty) 'required': required,
+    'properties': {for (final f in fields) f.name: _fieldSchema(f.sortedTypes)},
+  };
+}
+
+Map<String, dynamic> _fieldSchema(List<TypeStats> types) {
+  final names = <String>[];
+  for (final t in types) {
+    final n = _jsonSchemaTypes[t.name];
+    if (n != null && !names.contains(n)) names.add(n);
+  }
+  final out = <String, dynamic>{
+    'bsonType': names.length == 1 ? names.single : names,
+  };
+  for (final t in types) {
+    if (t.name == 'Object' && t.fields.isNotEmpty) {
+      final nested = _objectSchema(t.sortedFields, t.documents);
+      if (nested['required'] case final r?) out['required'] = r;
+      out['properties'] = nested['properties'];
+    } else if (t.name == 'Array' && t.itemTypes.isNotEmpty) {
+      out['items'] = _fieldSchema(
+        t.itemTypes.values.toList()..sort((a, b) => b.count.compareTo(a.count)),
+      );
+    }
+  }
+  return out;
+}

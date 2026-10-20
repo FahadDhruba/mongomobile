@@ -2,10 +2,11 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mongo_wire/mongo_wire.dart';
+import 'package:mongomobile/services/schema_analysis.dart';
 import 'package:mongomobile/services/update_preview.dart';
 
-/// Compares the update preview with what a real server does. Runs only
-/// with MONGO_URI set, e.g. mongodb://localhost:27017.
+/// Checks features against a real server: the update preview and generated
+/// validators. Runs only with MONGO_URI set, e.g. mongodb://localhost:27017.
 void main() {
   final uri = Platform.environment['MONGO_URI'];
 
@@ -81,6 +82,72 @@ void main() {
         reason: EJson.stringify(u),
       );
     }
+    await client.dropCollection(ns);
+  }, skip: uri == null ? 'MONGO_URI is not set' : null);
+
+  test('generated validators accept the sample and reject others', () async {
+    final client = await WireMongoClient.connect(uri!);
+    addTearDown(client.close);
+    const ns = Namespace('mongomobile_test', 'validation');
+    await client.dropCollection(ns).catchError((_) {});
+    final docs = <Map<String, dynamic>>[
+      {
+        'name': 'Ada',
+        'n': 1,
+        'big': const BsonLong(1),
+        'when': DateTime.utc(2024),
+        'tags': ['a'],
+        'items': [
+          {'sku': 'A', 'qty': 1.5},
+        ],
+        'address': {'city': 'London'},
+        'maybe': null,
+      },
+      {
+        'name': 'Bob',
+        'n': 2,
+        'big': const BsonLong(2),
+        'when': DateTime.utc(2025),
+        'tags': <Object?>[],
+        'items': [
+          {'sku': 'B'},
+        ],
+        'address': {'city': 'Paris', 'zip': '75001'},
+        'maybe': 'x',
+      },
+    ];
+    for (final d in docs) {
+      await client.insertOne(ns, d);
+    }
+    final sample = (await client.find(
+      ns,
+      const FindRequest(limit: 10),
+    )).documents;
+    final validator = jsonSchemaOf(SchemaAnalysis.of(sample));
+    await client.modifyCollection(ns, {
+      'validator': validator,
+      'validationLevel': 'strict',
+      'validationAction': 'error',
+    });
+    final failing = await client.find(
+      ns,
+      FindRequest(
+        filter: {
+          r'$nor': [validator],
+        },
+        limit: 10,
+      ),
+    );
+    expect(failing.documents, isEmpty);
+    await client.insertOne(ns, {...docs.first, 'name': 'Cy'});
+    await expectLater(
+      client.insertOne(ns, {...docs.first, 'n': 'not a number'}),
+      throwsA(isA<MongoException>()),
+    );
+    await expectLater(
+      client.insertOne(ns, {'name': 'missing required fields'}),
+      throwsA(isA<MongoException>()),
+    );
     await client.dropCollection(ns);
   }, skip: uri == null ? 'MONGO_URI is not set' : null);
 }
