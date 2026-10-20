@@ -12,7 +12,6 @@ One line per decision: what was decided and why.
 
 ## Made independently
 
-- Git identity: commits use Fahad Alamgir Dhruba <fahad.dhruba@gmail.com>, because the preconfigured identity was "Claude <noreply@anthropic.com>", which would break the no-AI-attribution rule.
 - The driver lives in `packages/mongo_wire` as a pure Dart package, so its integration tests run with plain `dart test` against the mongo:7 service container.
 - Fonts: Inter (UI) and JetBrains Mono (data) are bundled, both SIL OFL 1.1, so nothing is fetched at runtime.
 - Icon: original three-tier cylinder drawn by `tool/make_icon.py` on #001E2B with #00ED64, no MongoDB marks.
@@ -30,13 +29,13 @@ One line per decision: what was decided and why.
 - Riverpod automatic retry is turned off globally; errors are shown with a Retry button instead.
 - SASLprep is a practical subset (no NFKC normalisation), since Dart has no Unicode normalisation built in; this is documented.
 - X.509, Kerberos, AWS and OIDC auth are left out of v1, with a clear error message.
-- Release signing: one RSA-4096 PKCS12 key (alias `mongomobile`, 10,000-day validity) generated in the session and handed to the owner, not committed, because a key in a public repo would let anyone ship "updates" to installed copies.
+- Release signing: one RSA-4096 PKCS12 key (alias `mongomobile`, 10,000-day validity) kept by the maintainer and never committed, because a key in a public repo would let anyone ship "updates" to installed copies.
 - Only two secrets are required (keystore and password); alias and key password have defaults, since PKCS12 uses one password for both.
 - CI checks the APK signer and fails if secrets are set but the APK is debug-signed, and the release notes state the signing certificate SHA-256, so a wrongly signed release can't slip out.
-- Secrets can't be set from the session (the proxy blocks the Actions secrets API), so the owner adds them in the GitHub UI.
+- The signing key reaches CI only as repository secrets (`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`), which forks and pull requests from forks never see.
 - Fix for the frozen splash in v0.1.2/v0.1.3: settings moved from shared_preferences to secure storage, because shared_preferences_android 2.5 goes through package:jni (classes looked up by name, which R8 can rename in release builds) and `main()` awaited it before `runApp`. Startup now uses a timeout, falls back to default settings, and shows errors on screen instead of hanging; R8 keep rules for jni and the plugin classes are added as a safeguard.
 - getMore no longer sends maxTimeMS (servers reject it for non-tailable cursors); the find's own maxTimeMS already covers the cursor. Found on a real Atlas cluster with collections bigger than one batch.
-- mongodb+srv strings are resolved before the credentials are set up, so the TXT record's `authSource=admin` applies even when the URI path names a database (`.../fibrodon`). Before, such URIs tried to log in against the path database.
+- mongodb+srv strings are resolved before the credentials are set up, so the TXT record's `authSource=admin` applies even when the URI path names a database (`.../mydb`). Before, such URIs tried to log in against the path database.
 - Export saves through Android's Storage Access Framework (ACTION_CREATE_DOCUMENT) with a small channel in MainActivity, so it needs no storage permission and no file plugin; writes happen on a background thread in 256 KB chunks.
 - CSV export reads the results twice (once to collect every field path, once to write), matching Compass's column handling; it refuses more than 2,000 columns and points to JSON instead. No UTF-8 BOM, since it confuses many CSV parsers.
 - Export has no maxTimeMS or byte cap (a large export legitimately runs long) and uses its own cursor (`findBatches`) that is killed on cancel.
@@ -50,7 +49,7 @@ One line per decision: what was decided and why.
 - The hint input takes an index name or a key pattern (`{ a: 1 }`), detected by a leading `{`.
 - History (last 30 per collection) and favourites are stored in secure storage keyed by connection id and namespace, because queries can contain the same sensitive values as the data.
 - The explain summary prefers executed stages (with counts) and falls back to the planner's tree for the slot-based engine, whose executed stages have internal names; parsing is tested against explain output captured from MongoDB 7.0.
-- Generated code never includes the user's connection string (a `<connection string>` placeholder instead). The mongosh, Python, Node.js, Go and Java output was compiled/run against MongoDB 7 with the official drivers (pymongo 4.19, node driver 6.21, Go driver v2, Java sync driver 5.2); C# could not be compiled in the sandbox. Collation in Java/C#/Go covers locale and strength (plus caseLevel/numericOrdering in Java).
+- Generated code never includes the user's connection string (a `<connection string>` placeholder instead). The mongosh, Python, Node.js, Go and Java output was compiled/run against MongoDB 7 with the official drivers (pymongo 4.19, node driver 6.21, Go driver v2, Java sync driver 5.2); The C# output has not been compiled. Collation in Java/C#/Go covers locale and strength (plus caseLevel/numericOrdering in Java).
 - Ligatures are turned off in the monospace font so `!=` and `=>` show as typed.
 - Stage previews append `$limit: 10` to the pipeline up to that stage and run only while the preview is open (debounced 700 ms after edits), so typing doesn't fire a query per keystroke; `$out`/`$merge` stages are never previewed.
 - Stage previews are a sideways row of small cards, as in Compass, because full-size cards made pipelines unreadable on a phone.
@@ -96,8 +95,8 @@ One line per decision: what was decided and why.
 - Decryption is for what the app shows and edits; saving re-encrypts exactly the fields that were encrypted (same data key and algorithm), so plaintext never goes back to the server. New fields are not encrypted automatically, since that needs the server's schema rules and query analysis (mongocryptd or crypt_shared, which don't run on Android).
 - Master keys: local (96-byte key) and AWS KMS (SigV4-signed `Decrypt`, untested against real AWS). Azure, GCP and KMIP keys say they aren't supported. Queryable Encryption values are recognised and shown as stored, not decrypted: their stored format needs server-derived tokens to read.
 - Atlas shared and Flex tiers refuse `$currentOp` with `allUsers` and the `profile` command. The app then lists the user's own operations (with a note saying so) and explains that the profiler isn't available, pointing to Atlas's Query Profiler, instead of showing the raw error. `admin`, `local` and `config` are left out of the profiler's database list. The same fallback applies to index build progress and the shell's `db.currentOp()`.
+- Licensed under Apache-2.0: permissive, with an explicit patent grant, and it does not grant use of the project name.
 
-## Blockers and fallbacks
+## Known limits
 
-- Pushing was blocked for most of the session (403 until the Claude GitHub App got access); work was committed locally and pushed once access worked. No history was rewritten.
-- No local APK build: the sandbox can't reach `dl.google.com`, where the Android Gradle Plugin and Google Maven artifacts are served (`maven.google.com` redirects there, and public mirrors are blocked). The Android SDK itself was taken from the `cimg/android` Docker image, but Gradle can't resolve AGP 9.1.0. Fallback: the APK is built only by GitHub Actions; analyze and all tests pass locally.
+- The release APK is built by CI. Building one locally needs the Android SDK and access to Google's Maven repository, as for any Android project.

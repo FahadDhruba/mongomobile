@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/app_settings.dart';
@@ -7,6 +8,8 @@ import '../../theme/app_theme.dart';
 import '../../services/updater.dart';
 import '../widgets/common.dart';
 import 'update_sheet.dart';
+
+const _sourceUrl = 'https://github.com/FahadDhruba/mongomobile';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -219,14 +222,31 @@ class SettingsScreen extends ConsumerWidget {
             subtitle: const Text(
               'A serverless MongoDB client. Not affiliated with MongoDB, Inc.',
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Open-source licences'),
+            subtitle: const Text('MongoMobile is licensed under Apache-2.0'),
             onTap: () => showLicensePage(
               context: context,
               applicationName: 'MongoMobile',
+              applicationVersion: appVersion,
               applicationIcon: const Padding(
                 padding: EdgeInsets.all(8),
                 child: AppLogo(size: 48),
               ),
             ),
+          ),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('Source code'),
+            subtitle: const Text(_sourceUrl),
+            onTap: () {
+              Clipboard.setData(const ClipboardData(text: _sourceUrl));
+              ScaffoldMessenger.of(
+                context,
+              ).showSnackBar(const SnackBar(content: Text('Link copied')));
+            },
           ),
           const SizedBox(height: 24),
         ],

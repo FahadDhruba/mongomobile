@@ -78,12 +78,12 @@ void main() {
       ['authSource=admin&replicaSet=atlas-1'],
     );
     final cs = ConnectionString.parse(
-      'mongodb+srv://u:p@cluster0.ab.mongodb.net/fibrodon?retryWrites=true&w=majority',
+      'mongodb+srv://u:p@cluster0.ab.mongodb.net/mydb?retryWrites=true&w=majority',
     );
-    expect(cs.authSource, 'fibrodon');
+    expect(cs.authSource, 'mydb');
     final resolved = await resolveConnectionString(cs, dns);
     expect(resolved.authSource, 'admin');
-    expect(resolved.database, 'fibrodon');
+    expect(resolved.database, 'mydb');
     expect(resolved.replicaSet, 'atlas-1');
     expect(resolved.tls, isTrue);
     expect(resolved.hosts.single, const HostAddress('shard-00.ab.mongodb.net'));

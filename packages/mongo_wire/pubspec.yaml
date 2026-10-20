@@ -1,6 +1,8 @@
 name: mongo_wire
 description: Minimal MongoDB OP_MSG client used by MongoMobile.
 version: 0.1.0
+repository: https://github.com/FahadDhruba/mongomobile
+issue_tracker: https://github.com/FahadDhruba/mongomobile/issues
 publish_to: none
 
 environment:

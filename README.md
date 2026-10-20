@@ -1,11 +1,16 @@
 # MongoMobile
 
+[![CI](https://github.com/FahadDhruba/mongomobile/actions/workflows/ci.yml/badge.svg)](https://github.com/FahadDhruba/mongomobile/actions/workflows/ci.yml)
+[![Licence: Apache-2.0](https://img.shields.io/badge/licence-Apache--2.0-blue.svg)](LICENSE)
+[![Latest release](https://img.shields.io/github/v/release/FahadDhruba/mongomobile)](https://github.com/FahadDhruba/mongomobile/releases/latest)
+
 A serverless MongoDB client for Android, built with Flutter. It talks to
 your database directly from the phone over the MongoDB wire protocol, with
 no backend in between, and looks and feels like MongoDB Compass.
 
-MongoMobile is an independent project and is not affiliated with or
-endorsed by MongoDB, Inc. "MongoDB" is a trademark of MongoDB, Inc.
+**Not affiliated with MongoDB.** MongoMobile is an independent project and
+is not affiliated with, endorsed by or sponsored by MongoDB, Inc. "MongoDB"
+is a registered trademark of MongoDB, Inc.
 
 <p>
   <img src="docs/screenshots/02-connections.png" width="200" alt="Saved connections">
@@ -288,6 +293,29 @@ debug-signed version.
 
 ## Licences
 
-The app bundles [Inter](https://github.com/rsms/inter) and
-[JetBrains Mono](https://github.com/JetBrains/JetBrainsMono), both under the
-SIL Open Font License 1.1 (see `assets/fonts/`).
+MongoMobile is licensed under the [Apache License 2.0](LICENSE); see also
+[NOTICE](NOTICE). The driver in `packages/mongo_wire` has its own copy of the
+licence. The app lists all licences under Settings → Open-source licences.
+
+Bundled third-party components:
+
+| Component | Version | Licence |
+|---|---|---|
+| [Inter](https://github.com/rsms/inter) font | | SIL Open Font License 1.1 |
+| [JetBrains Mono](https://github.com/JetBrains/JetBrainsMono) font | | SIL Open Font License 1.1 |
+| [flutter_riverpod](https://pub.dev/packages/flutter_riverpod) | 3.4.3 | MIT |
+| [flutter_secure_storage](https://pub.dev/packages/flutter_secure_storage) | 11.2.0 | BSD 3-Clause |
+| [local_auth](https://pub.dev/packages/local_auth) | 3.0.2 | BSD 3-Clause |
+| [dartssh2](https://pub.dev/packages/dartssh2) | 4.1.0 | MIT |
+| [pointycastle](https://pub.dev/packages/pointycastle) | 4.0.0 | MIT (Bouncy Castle), with an Apache-2.0 scrypt component |
+| [crypto](https://pub.dev/packages/crypto) | 3.0.7 | BSD 3-Clause |
+| Flutter and Dart SDK libraries | 3.47.7 | BSD 3-Clause |
+
+Their own dependencies are under BSD, MIT or Apache-2.0 licences. Licence
+texts are in each package.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build and test,
+[SECURITY.md](SECURITY.md) for reporting vulnerabilities, and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for how we work together.
