@@ -14,18 +14,30 @@ class QuerySpec {
     this.projectText = '',
     this.sortText = '',
     this.limitText = '',
+    this.skipText = '',
+    this.collationText = '',
+    this.hintText = '',
+    this.maxTimeText = '',
     this.filter = const {},
     this.projection,
     this.sort,
     this.limit,
+    this.skip = 0,
+    this.collation,
+    this.hint,
+    this.maxTime,
   });
 
-  /// Parses the four inputs. Throws [FormatException] naming the field.
+  /// Parses the inputs. Throws [FormatException] naming the field.
   factory QuerySpec.parse({
     String filter = '',
     String project = '',
     String sort = '',
     String limit = '',
+    String skip = '',
+    String collation = '',
+    String hint = '',
+    String maxTime = '',
   }) {
     Map<String, dynamic> parse(String label, String text) {
       try {
@@ -34,6 +46,15 @@ class QuerySpec {
         throw FormatException('$label: ${e.message} '
             '(line ${e.line}, column ${e.column})');
       }
+    }
+
+    int? whole(String label, String text) {
+      if (text.trim().isEmpty) return null;
+      final v = int.tryParse(text.trim());
+      if (v == null || v < 0) {
+        throw FormatException('$label: enter a whole number');
+      }
+      return v;
     }
 
     final f = parse('Filter', filter);
@@ -46,23 +67,41 @@ class QuerySpec {
             'Sort: use 1 for ascending and -1 for descending');
       }
     }
-    int? l;
-    if (limit.trim().isNotEmpty) {
-      l = int.tryParse(limit.trim());
-      if (l == null || l < 0) {
-        throw const FormatException('Limit: enter a whole number');
-      }
-      if (l == 0) l = null;
+    final c = parse('Collation', collation);
+    if (c.isNotEmpty && c['locale'] is! String) {
+      throw const FormatException(
+          "Collation: needs a locale, e.g. { locale: 'en', strength: 2 }");
+    }
+    // A hint is an index name or a key pattern.
+    Object? h;
+    final ht = hint.trim();
+    if (ht.isNotEmpty) {
+      h = ht.startsWith('{')
+          ? parse('Hint', ht)
+          : ht.replaceAll(RegExp(r'''^["']|["']$'''), '');
+    }
+    final l = whole('Limit', limit);
+    final mt = whole('Max time', maxTime);
+    if (mt == 0) {
+      throw const FormatException('Max time: enter milliseconds above 0');
     }
     return QuerySpec(
       filterText: filter,
       projectText: project,
       sortText: sort,
       limitText: limit,
+      skipText: skip,
+      collationText: collation,
+      hintText: hint,
+      maxTimeText: maxTime,
       filter: f,
       projection: p.isEmpty ? null : p,
       sort: s.isEmpty ? null : s,
-      limit: l,
+      limit: l == 0 ? null : l,
+      skip: whole('Skip', skip) ?? 0,
+      collation: c.isEmpty ? null : c,
+      hint: h,
+      maxTime: mt == null ? null : Duration(milliseconds: mt),
     );
   }
 
@@ -70,14 +109,30 @@ class QuerySpec {
   final String projectText;
   final String sortText;
   final String limitText;
+  final String skipText;
+  final String collationText;
+  final String hintText;
+  final String maxTimeText;
   final Map<String, dynamic> filter;
   final Map<String, dynamic>? projection;
   final Map<String, dynamic>? sort;
   final int? limit;
 
+  /// Documents to skip before the first page.
+  final int skip;
+  final Map<String, dynamic>? collation;
+
+  /// An index name or key pattern.
+  final Object? hint;
+
+  /// Overrides the query time limit from Settings for this query.
+  final Duration? maxTime;
+
   /// 1 or -1 when the sort is by `_id` alone (or absent), which allows
-  /// keyset pagination; null otherwise.
+  /// keyset pagination; null otherwise. A skip or a collation (which can
+  /// change how string `_id`s compare) switch to skip/limit paging.
   int? get keysetDirection {
+    if (skip > 0 || collation != null) return null;
     final s = sort;
     if (s == null || s.isEmpty) return 1;
     if (s.length != 1 || s.keys.single != '_id') return null;
@@ -93,8 +148,43 @@ class QuerySpec {
     return v == 0 || v == false || v == 0.0;
   }
 
-  bool get isDefault =>
-      filter.isEmpty && projection == null && sort == null && limit == null;
+  /// True when any of the inputs behind "Options" is set.
+  bool get hasOptions =>
+      projection != null ||
+      sort != null ||
+      limit != null ||
+      skip > 0 ||
+      collation != null ||
+      hint != null ||
+      maxTime != null;
+
+  bool get isDefault => filter.isEmpty && !hasOptions;
+
+  /// The typed text of every input that is set, for history and favourites.
+  Map<String, String> toTexts() => {
+    for (final e in {
+      'filter': filterText,
+      'project': projectText,
+      'sort': sortText,
+      'collation': collationText,
+      'hint': hintText,
+      'skip': skipText,
+      'limit': limitText,
+      'maxTime': maxTimeText,
+    }.entries)
+      if (e.value.trim().isNotEmpty) e.key: e.value.trim(),
+  };
+
+  factory QuerySpec.fromTexts(Map<String, String> t) => QuerySpec.parse(
+    filter: t['filter'] ?? '',
+    project: t['project'] ?? '',
+    sort: t['sort'] ?? '',
+    collation: t['collation'] ?? '',
+    hint: t['hint'] ?? '',
+    skip: t['skip'] ?? '',
+    limit: t['limit'] ?? '',
+    maxTime: t['maxTime'] ?? '',
+  );
 }
 
 enum CountKind { loading, estimated, exact, unavailable }
@@ -321,7 +411,7 @@ class DocumentsController extends Notifier<DocumentsState> {
         pageIndex = 0;
       }
     } else {
-      skip = pageIndex * s.pageSize;
+      skip = q.skip + pageIndex * s.pageSize;
       if (skip >= largeSkipThreshold) {
         warning = 'This page skips ${groupDigits(skip)} documents, which the server '
             'has to read and discard. Sort by _id or narrow the filter for '
@@ -348,7 +438,9 @@ class DocumentsController extends Notifier<DocumentsState> {
           sort: sort,
           skip: skip,
           limit: fetch,
-          maxTime: _settings.queryTimeout,
+          maxTime: q.maxTime ?? _settings.queryTimeout,
+          collation: q.collation,
+          hint: q.hint,
           maxBytes: _settings.maxPageBytes,
         ),
         cancel: token,
@@ -414,14 +506,26 @@ class DocumentsController extends Notifier<DocumentsState> {
     final settings = _settings;
     Future<CountState> task() async {
       try {
-        if (q.filter.isEmpty) {
+        // The fast metadata count only applies to the whole collection.
+        if (q.filter.isEmpty &&
+            q.skip == 0 &&
+            q.collation == null &&
+            q.hint == null) {
           var n = await client.estimatedDocumentCount(namespace,
               maxTime: settings.countTimeout, cancel: token);
           if (q.limit != null && q.limit! < n) n = q.limit!;
           return CountState(CountKind.estimated, n);
         }
-        final n = await client.countDocuments(namespace, q.filter,
-            limit: q.limit, maxTime: settings.countTimeout, cancel: token);
+        final n = await client.countDocuments(
+          namespace,
+          q.filter,
+          skip: q.skip,
+          limit: q.limit,
+          collation: q.collation,
+          hint: q.hint,
+          maxTime: settings.countTimeout,
+          cancel: token,
+        );
         return CountState(CountKind.exact, n);
       } on MongoServerError catch (e) {
         return CountState(CountKind.unavailable, null,

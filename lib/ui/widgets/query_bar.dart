@@ -5,7 +5,8 @@ import '../../theme/app_theme.dart';
 import 'query_assist.dart';
 
 /// Compass-style query bar: a Filter input with Find and Reset, and
-/// collapsible Project, Sort and Limit options. Brackets and quotes close
+/// collapsible Project, Sort, Collation, Hint, Skip, Limit and Max time
+/// options. Brackets and quotes close
 /// themselves, and a row of chips suggests field names, operators and
 /// value helpers for the input being edited.
 class QueryBar extends StatefulWidget {
@@ -16,6 +17,8 @@ class QueryBar extends StatefulWidget {
     required this.onReset,
     this.busy = false,
     this.fields = const [],
+    this.onHistory,
+    this.onSaveFavorite,
   });
 
   final QuerySpec initial;
@@ -26,6 +29,12 @@ class QueryBar extends StatefulWidget {
   /// Known field paths of the collection, for suggestions.
   final List<String> fields;
 
+  /// Opens recent and favourite queries.
+  final VoidCallback? onHistory;
+
+  /// Saves the query as typed (after checking it parses).
+  final ValueChanged<QuerySpec>? onSaveFavorite;
+
   @override
   State<QueryBar> createState() => _QueryBarState();
 }
@@ -35,9 +44,15 @@ class _QueryBarState extends State<QueryBar> {
   late final _project = TextEditingController(text: widget.initial.projectText);
   late final _sort = TextEditingController(text: widget.initial.sortText);
   late final _limit = TextEditingController(text: widget.initial.limitText);
-  late bool _options = widget.initial.projectText.isNotEmpty ||
-      widget.initial.sortText.isNotEmpty ||
-      widget.initial.limitText.isNotEmpty;
+  late final _skip = TextEditingController(text: widget.initial.skipText);
+  late final _collation =
+      TextEditingController(text: widget.initial.collationText);
+  late final _hint = TextEditingController(text: widget.initial.hintText);
+  late final _maxTime = TextEditingController(text: widget.initial.maxTimeText);
+  late bool _options = widget.initial.hasOptions;
+
+  List<TextEditingController> get _all =>
+      [_filter, _project, _sort, _collation, _hint, _skip, _limit, _maxTime];
   String? _error;
 
   final _focus = {
@@ -118,11 +133,29 @@ class _QueryBarState extends State<QueryBar> {
   void didUpdateWidget(covariant QueryBar old) {
     super.didUpdateWidget(old);
     if (old.fields != widget.fields) _refreshSuggestions();
+    // A query run from elsewhere (history, favourites) fills the inputs.
+    if (!identical(old.initial, widget.initial)) {
+      final q = widget.initial;
+      final texts = [
+        q.filterText,
+        q.projectText,
+        q.sortText,
+        q.collationText,
+        q.hintText,
+        q.skipText,
+        q.limitText,
+        q.maxTimeText,
+      ];
+      for (var i = 0; i < _all.length; i++) {
+        if (_all[i].text != texts[i]) _all[i].text = texts[i];
+      }
+      if (q.hasOptions && !_options) setState(() => _options = true);
+    }
   }
 
   @override
   void dispose() {
-    for (final c in [_filter, _project, _sort, _limit]) {
+    for (final c in _all) {
       c.dispose();
     }
     for (final n in _focus.values) {
@@ -131,24 +164,45 @@ class _QueryBarState extends State<QueryBar> {
     super.dispose();
   }
 
-  void _find() {
+  QuerySpec? _parse() {
     try {
       final spec = QuerySpec.parse(
         filter: _filter.text,
         project: _project.text,
         sort: _sort.text,
+        collation: _collation.text,
+        hint: _hint.text,
+        skip: _skip.text,
         limit: _limit.text,
+        maxTime: _maxTime.text,
       );
       setState(() => _error = null);
-      FocusScope.of(context).unfocus();
-      widget.onFind(spec);
+      return spec;
     } on FormatException catch (e) {
       setState(() => _error = e.message);
+      return null;
     }
   }
 
+  void _find() {
+    final spec = _parse();
+    if (spec == null) return;
+    FocusScope.of(context).unfocus();
+    widget.onFind(spec);
+  }
+
+  void _save() {
+    final spec = _parse();
+    if (spec == null) return;
+    if (spec.isDefault) {
+      setState(() => _error = 'Type a query to save it');
+      return;
+    }
+    widget.onSaveFavorite?.call(spec);
+  }
+
   void _reset() {
-    for (final c in [_filter, _project, _sort, _limit]) {
+    for (final c in _all) {
       c.clear();
     }
     setState(() => _error = null);
@@ -157,12 +211,13 @@ class _QueryBarState extends State<QueryBar> {
   }
 
   Widget _field(String label, TextEditingController controller, String hint,
-      {TextInputType? keyboard, QueryField? field}) {
+      {TextInputType? keyboard, QueryField? field, bool braces = false}) {
     final c = context.colors;
     return TextField(
       controller: controller,
       focusNode: field == null ? null : _focus[field],
-      inputFormatters: field == null ? null : [QueryInputFormatter()],
+      inputFormatters:
+          field != null || braces ? [QueryInputFormatter()] : null,
       style: monoStyle(context, size: 13),
       keyboardType: keyboard ?? TextInputType.multiline,
       autocorrect: false,
@@ -201,20 +256,29 @@ class _QueryBarState extends State<QueryBar> {
             _field('Project', _project, '{ field: 1 }',
                 field: QueryField.project),
             const SizedBox(height: 8),
+            _field('Sort', _sort, '{ _id: -1 }', field: QueryField.sort),
+            const SizedBox(height: 8),
+            _field('Collation', _collation, "{ locale: 'en', strength: 2 }",
+                braces: true),
+            const SizedBox(height: 8),
+            _field('Hint', _hint, '{ field: 1 } or index name'),
+            const SizedBox(height: 8),
             Row(
               children: [
                 Expanded(
-                    flex: 3,
-                    child: _field('Sort', _sort, '{ _id: -1 }',
-                        field: QueryField.sort)),
+                  child: _field('Skip', _skip, '0',
+                      keyboard: TextInputType.number),
+                ),
                 const SizedBox(width: 8),
                 Expanded(
-                  flex: 2,
                   child: _field('Limit', _limit, '0',
                       keyboard: TextInputType.number),
                 ),
               ],
             ),
+            const SizedBox(height: 8),
+            _field('Max time ms', _maxTime, 'from Settings',
+                keyboard: TextInputType.number),
           ],
           if (_suggestions.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -233,8 +297,24 @@ class _QueryBarState extends State<QueryBar> {
                     visualDensity: VisualDensity.compact),
                 onPressed: () => setState(() => _options = !_options),
                 icon: Icon(_options ? Icons.expand_less : Icons.tune, size: 18),
-                label: Text(_options ? 'Fewer options' : 'Options'),
+                label: Text(_options ? 'Fewer' : 'Options'),
               ),
+              if (widget.onHistory != null)
+                IconButton(
+                  tooltip: 'Query history',
+                  visualDensity: VisualDensity.compact,
+                  color: c.muted,
+                  onPressed: widget.onHistory,
+                  icon: const Icon(Icons.history, size: 20),
+                ),
+              if (widget.onSaveFavorite != null)
+                IconButton(
+                  tooltip: 'Save as favourite',
+                  visualDensity: VisualDensity.compact,
+                  color: c.muted,
+                  onPressed: _save,
+                  icon: const Icon(Icons.star_border, size: 20),
+                ),
               const Spacer(),
               OutlinedButton(
                 onPressed: _reset,

@@ -187,4 +187,37 @@ void main() {
     expect(() => QuerySpec.parse(sort: '{a: 2}'), throwsFormatException);
     expect(() => QuerySpec.parse(limit: 'x'), throwsFormatException);
   });
+
+  test('skip, collation and hint switch to skip paging and reach the server',
+      () async {
+    await settle(c);
+    final ctrl = c.read(documentsProvider(ns).notifier);
+    await ctrl.run(QuerySpec.parse(
+      skip: '10',
+      collation: "{ locale: 'en' }",
+      hint: '{ _id: 1 }',
+      maxTime: '1500',
+    ));
+    var s = c.read(documentsProvider(ns));
+    expect(s.usesKeyset, isFalse);
+    expect(ids(s).first, 10);
+    expect(client.finds.last.collation, {'locale': 'en'});
+    expect(client.finds.last.hint, {'_id': 1});
+    expect(client.finds.last.maxTime, const Duration(milliseconds: 1500));
+    await ctrl.next();
+    s = c.read(documentsProvider(ns));
+    expect(client.finds.last.skip, 35);
+    expect(ids(s).first, 35);
+  });
+
+  test('query texts round-trip for history', () {
+    final q = QuerySpec.parse(filter: '{ a: 1 }', hint: 'a_1', skip: '3');
+    expect(q.toTexts(), {'filter': '{ a: 1 }', 'hint': 'a_1', 'skip': '3'});
+    final back = QuerySpec.fromTexts(q.toTexts());
+    expect(back.hint, 'a_1');
+    expect(back.skip, 3);
+    expect(() => QuerySpec.parse(collation: '{ strength: 2 }'),
+        throwsFormatException);
+    expect(() => QuerySpec.parse(maxTime: '0'), throwsFormatException);
+  });
 }
