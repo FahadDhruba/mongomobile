@@ -6,12 +6,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.provider.DocumentsContract
+import android.provider.OpenableColumns
 import android.provider.Settings
 import androidx.core.content.FileProvider
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import java.io.InputStream
 import java.io.OutputStream
 import java.util.concurrent.Executors
 
@@ -21,7 +23,9 @@ class MainActivity : FlutterFragmentActivity() {
     private val main = Handler(Looper.getMainLooper())
 
     private var pendingCreate: MethodChannel.Result? = null
+    private var pendingOpen: MethodChannel.Result? = null
     private val streams = HashMap<Int, Pair<Uri, OutputStream>>()
+    private val inputs = HashMap<Int, InputStream>()
     private var nextStreamId = 1
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -58,6 +62,47 @@ class MainActivity : FlutterFragmentActivity() {
                             runCatching { DocumentsContract.deleteDocument(contentResolver, entry.first) }
                             null
                         }
+                    }
+                    "openDocument" -> openDocument(
+                        call.argument<List<String>>("mimeTypes") ?: listOf("*/*"),
+                        result,
+                    )
+                    "openRead" -> {
+                        val uri = call.argument<String>("uri")
+                        if (uri == null) {
+                            result.error("args", "No file", null)
+                        } else {
+                            val id = nextStreamId++
+                            background(result) {
+                                val stream = contentResolver.openInputStream(Uri.parse(uri))
+                                    ?: throw IllegalStateException("Could not open the file")
+                                synchronized(inputs) { inputs[id] = stream }
+                                id
+                            }
+                        }
+                    }
+                    "read" -> {
+                        val stream = synchronized(inputs) { inputs[call.argument<Int>("id")] }
+                        if (stream == null) {
+                            result.error("closed", "The file is not open", null)
+                        } else {
+                            background(result) {
+                                val buffer = ByteArray(256 * 1024)
+                                var filled = 0
+                                while (filled < buffer.size) {
+                                    val n = stream.read(buffer, filled, buffer.size - filled)
+                                    if (n < 0) break
+                                    filled += n
+                                }
+                                // Null marks the end of the file.
+                                if (filled == 0) null else buffer.copyOf(filled)
+                            }
+                        }
+                    }
+                    "closeRead" -> {
+                        val stream = synchronized(inputs) { inputs.remove(call.argument<Int>("id")) }
+                        if (stream == null) result.success(null)
+                        else background(result) { stream.close(); null }
                     }
                     else -> result.notImplemented()
                 }
@@ -124,10 +169,51 @@ class MainActivity : FlutterFragmentActivity() {
         startActivityForResult(intent, REQUEST_CREATE_DOCUMENT)
     }
 
+    private fun openDocument(mimeTypes: List<String>, result: MethodChannel.Result) {
+        if (pendingOpen != null) {
+            result.error("busy", "A file picker is already open", null)
+            return
+        }
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+        }
+        pendingOpen = result
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, REQUEST_OPEN_DOCUMENT)
+    }
+
+    /// The picked file's uri, display name and size (-1 when unknown).
+    private fun describe(uri: Uri): Map<String, Any> {
+        var name = uri.lastPathSegment ?: "file"
+        var size = -1L
+        contentResolver.query(uri, null, null, null, null)?.use { c ->
+            if (c.moveToFirst()) {
+                val n = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                val s = c.getColumnIndex(OpenableColumns.SIZE)
+                if (n >= 0 && !c.isNull(n)) name = c.getString(n)
+                if (s >= 0 && !c.isNull(s)) size = c.getLong(s)
+            }
+        }
+        return mapOf("uri" to uri.toString(), "name" to name, "size" to size)
+    }
+
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_OPEN_DOCUMENT) {
+            val result = pendingOpen ?: return
+            pendingOpen = null
+            val uri = data?.data
+            if (resultCode != RESULT_OK || uri == null) {
+                result.success(null)
+            } else {
+                background(result) { describe(uri) }
+            }
+            return
+        }
         if (requestCode != REQUEST_CREATE_DOCUMENT) return
         val result = pendingCreate ?: return
         pendingCreate = null
@@ -162,11 +248,16 @@ class MainActivity : FlutterFragmentActivity() {
     override fun onDestroy() {
         for ((_, entry) in streams) runCatching { entry.second.close() }
         streams.clear()
+        synchronized(inputs) {
+            for ((_, stream) in inputs) runCatching { stream.close() }
+            inputs.clear()
+        }
         io.shutdown()
         super.onDestroy()
     }
 
     companion object {
         private const val REQUEST_CREATE_DOCUMENT = 4711
+        private const val REQUEST_OPEN_DOCUMENT = 4712
     }
 }
