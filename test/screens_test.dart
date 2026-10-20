@@ -196,8 +196,28 @@ void main() {
     await tester.tap(find.byTooltip('Edit').first);
     await shot(tester, '11-editor');
     expect(find.text('Valid document'), findsOneWidget);
-    await tester.pageBack();
+
+    // The field editor: _id is locked, bad values block saving.
+    await tester.tap(find.byTooltip('Field editor'));
+    await shot(tester, '11a-field-editor');
+    expect(find.byIcon(Icons.lock_outline), findsOneWidget);
+    final orderNo = find.widgetWithText(TextFormField, '1000');
+    await tester.enterText(orderNo, 'abc');
+    await tester.pump();
+    expect(find.textContaining('orderNo: Enter a whole number'), findsOneWidget);
+    await tester.enterText(find.widgetWithText(TextFormField, 'abc'), '4242');
+    await tester.pump();
+    expect(find.text('Valid document'), findsOneWidget);
+    // Back to JSON and forth keeps the edit.
+    await tester.tap(find.byTooltip('JSON editor'));
     await tester.pumpAndSettle();
+    expect(find.textContaining('"orderNo": 4242'), findsOneWidget);
+    await tester.tap(find.byTooltip('Field editor'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+    expect(client.data['shop']!['orders']!.first['orderNo'], 4242);
+    expect(client.data['shop']!['orders']!.first['version'], BsonLong(3));
 
     // Typing in the filter closes braces and suggests fields.
     final filter = find.byType(TextField).first;
