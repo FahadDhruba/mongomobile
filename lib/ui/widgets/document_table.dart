@@ -6,8 +6,8 @@ import 'bson_value.dart';
 import 'document_card.dart';
 
 /// The current page as a table: one column per top-level field, scrolling
-/// sideways. Tapping a cell shows its full value; the row menu offers the
-/// document actions.
+/// sideways. Tapping a cell shows its full value (and an Edit button in
+/// write mode); the row menu offers the document actions.
 class DocumentTable extends StatefulWidget {
   const DocumentTable({
     super.key,
@@ -15,6 +15,7 @@ class DocumentTable extends StatefulWidget {
     required this.firstRowNumber,
     required this.previewLength,
     required this.actionsFor,
+    this.onEditField,
     this.header,
   });
 
@@ -22,6 +23,9 @@ class DocumentTable extends StatefulWidget {
   final int firstRowNumber;
   final int previewLength;
   final DocumentActions Function(int index) actionsFor;
+
+  /// Edits one top-level field of a row; null when the rows are read-only.
+  final void Function(int index, String field)? onEditField;
 
   /// Shown above the table, e.g. banners.
   final Widget? header;
@@ -66,7 +70,14 @@ class _DocumentTableState extends State<DocumentTable> {
         : s;
   }
 
-  void _showValue(String field, Object? value, bool missing) {
+  void _showValue(int row, String field, Object? value, bool missing) {
+    final edit = widget.onEditField;
+    final canEdit =
+        edit != null &&
+        widget.actionsFor(row).onEdit != null &&
+        field != '_id' &&
+        !field.contains('.') &&
+        !field.startsWith(r'$');
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -79,10 +90,32 @@ class _DocumentTableState extends State<DocumentTable> {
           controller: scroll,
           padding: const EdgeInsets.all(16),
           children: [
-            Text(field,
-                style: monoStyle(ctx, size: 14, weight: FontWeight.w700)),
-            Text(missing ? 'missing' : bsonTypeName(value),
-                style: TextStyle(color: ctx.colors.muted, fontSize: 12)),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(field,
+                          style: monoStyle(ctx,
+                              size: 14, weight: FontWeight.w700)),
+                      Text(missing ? 'missing' : bsonTypeName(value),
+                          style: TextStyle(
+                              color: ctx.colors.muted, fontSize: 12)),
+                    ],
+                  ),
+                ),
+                if (canEdit)
+                  TextButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      edit(row, field);
+                    },
+                    icon: const Icon(Icons.edit_outlined, size: 18),
+                    label: Text(missing ? 'Add' : 'Edit'),
+                  ),
+              ],
+            ),
             const SizedBox(height: 12),
             if (missing)
               Text('This document has no "$field" field.',
@@ -191,8 +224,8 @@ class _DocumentTableState extends State<DocumentTable> {
                               ),
                               for (final col in cols)
                                 InkWell(
-                                  onTap: () => _showValue(
-                                      col, doc[col], !doc.containsKey(col)),
+                                  onTap: () => _showValue(i, col, doc[col],
+                                      !doc.containsKey(col)),
                                   child: cell(
                                     _width(col),
                                     doc.containsKey(col)

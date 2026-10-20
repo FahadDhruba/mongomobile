@@ -12,6 +12,8 @@ class FieldEditor extends StatelessWidget {
     required this.root,
     required this.onChanged,
     this.lockId = false,
+    this.singleField = false,
+    this.controller,
   });
 
   final FieldNode root;
@@ -21,6 +23,12 @@ class FieldEditor extends StatelessWidget {
 
   /// Makes the top-level `_id` read-only (editing an existing document).
   final bool lockId;
+
+  /// Edits just the value (and type) of the root's one field: its name is
+  /// fixed and it cannot be removed.
+  final bool singleField;
+
+  final ScrollController? controller;
 
   @override
   Widget build(BuildContext context) {
@@ -34,11 +42,13 @@ class FieldEditor extends StatelessWidget {
             parent: parent,
             depth: depth,
             locked: lockId && depth == 0 && n.key == '_id',
+            fixedKey: singleField && depth == 0,
             onChanged: onChanged,
           ),
         );
         if (n.type.isContainer && n.expanded) walk(n, depth + 1);
       }
+      if (singleField && depth == 0) return;
       rows.add(
         _AddRow(
           key: ObjectKey((parent, 'add')),
@@ -54,6 +64,8 @@ class FieldEditor extends StatelessWidget {
 
     walk(root, 0);
     return ListView(
+      controller: controller,
+      shrinkWrap: singleField,
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 24),
       children: rows,
     );
@@ -100,12 +112,14 @@ class _FieldRow extends StatelessWidget {
     required this.depth,
     required this.locked,
     required this.onChanged,
+    this.fixedKey = false,
   });
 
   final FieldNode node;
   final FieldNode parent;
   final int depth;
   final bool locked;
+  final bool fixedKey;
   final VoidCallback onChanged;
 
   String? get _valueError {
@@ -129,7 +143,15 @@ class _FieldRow extends StatelessWidget {
       fillColor: c.card,
     );
 
-    final keyPart = inArray
+    final keyPart = fixedKey
+        ? Expanded(
+            child: Text(
+              node.key,
+              overflow: TextOverflow.ellipsis,
+              style: mono.copyWith(color: c.key, fontWeight: FontWeight.w700),
+            ),
+          )
+        : inArray
         ? Padding(
             padding: const EdgeInsets.symmetric(horizontal: 6),
             child: Text('[${node.key}]', style: mono.copyWith(color: c.muted)),
@@ -189,7 +211,9 @@ class _FieldRow extends StatelessWidget {
               _TypeButton(node: node, enabled: !locked, onChanged: onChanged),
               SizedBox(
                 width: 36,
-                child: locked
+                child: fixedKey
+                    ? null
+                    : locked
                     ? Icon(Icons.lock_outline, size: 16, color: c.muted)
                     : IconButton(
                         tooltip: 'Remove ${inArray ? 'item' : 'field'}',

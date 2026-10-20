@@ -275,6 +275,65 @@ void main() {
     expect(find.text('1 – 25 of ~40'), findsOneWidget);
   });
 
+  testWidgets('edit a table cell in place', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Table view'));
+    await tester.pumpAndSettle();
+
+    // Read-only: the value sheet has no Edit button.
+    await tester.tap(find.text('1001'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit'), findsNothing);
+    Navigator.of(tester.element(find.text('Int32'))).pop();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('1001'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit field'), findsOneWidget);
+    await tester.tap(find.byTooltip('Field type'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Int64').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, '1001'), '777777');
+    await tester.pump();
+    await shot(tester, '16-table-edit');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    final orders = client.data['shop']!['orders']!;
+    expect(orders[1]['orderNo'], const BsonLong(777777));
+    expect(find.text('777777'), findsOneWidget);
+
+    // Remove a field.
+    await tester.tap(find.text('777777'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Remove field'));
+    await tester.pumpAndSettle();
+    expect(orders[1].containsKey('orderNo'), isFalse);
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

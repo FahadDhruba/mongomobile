@@ -331,12 +331,14 @@ class FakeMongoClient implements MongoClient {
   }
 
   Map<String, dynamic> _applySet(Map<String, dynamic> d, Object update) {
-    if (update is Map && update[r'$set'] is Map) {
+    if (update is Map &&
+        update.keys.every((k) => k == r'$set' || k == r'$unset')) {
       final out = {...d};
-      (update[r'$set'] as Map).forEach((k, v) => out['$k'] = v);
+      (update[r'$set'] as Map? ?? {}).forEach((k, v) => out['$k'] = v);
+      (update[r'$unset'] as Map? ?? {}).forEach((k, _) => out.remove('$k'));
       return out;
     }
-    throw UnsupportedError('Fake updates only support \$set');
+    throw UnsupportedError('Fake updates only support \$set and \$unset');
   }
 
   @override

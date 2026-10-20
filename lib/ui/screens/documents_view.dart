@@ -18,6 +18,7 @@ import '../../services/codegen.dart';
 import '../../state/query_library.dart';
 import 'code_export_sheet.dart';
 import 'explain_screen.dart';
+import 'field_edit_sheet.dart';
 import 'export_sheet.dart';
 import 'history_sheet.dart';
 
@@ -25,29 +26,26 @@ enum DocumentView { list, json, table }
 
 /// Field paths from a random sample of the collection, for query bar
 /// suggestions. Failures (views without $sample, permissions) give none.
-final sampledFieldsProvider =
-    FutureProvider.autoDispose.family<List<String>, Namespace>((ref, ns) async {
-  final client = ref.watch(clientProvider);
-  try {
-    final reply = await client.runCommand(
-      ns.db,
-      {
-        'aggregate': ns.collection,
-        'pipeline': [
-          {
-            r'$sample': {'size': 200}
-          },
-        ],
-        'cursor': {'batchSize': 200},
-      },
-      maxTime: const Duration(seconds: 5),
-    );
-    final batch = ((reply['cursor'] as Map?)?['firstBatch'] as List?) ?? const [];
-    return fieldPathsOf(batch.cast<Map<String, dynamic>>());
-  } on Object {
-    return const [];
-  }
-});
+final sampledFieldsProvider = FutureProvider.autoDispose
+    .family<List<String>, Namespace>((ref, ns) async {
+      final client = ref.watch(clientProvider);
+      try {
+        final reply = await client.runCommand(ns.db, {
+          'aggregate': ns.collection,
+          'pipeline': [
+            {
+              r'$sample': {'size': 200},
+            },
+          ],
+          'cursor': {'batchSize': 200},
+        }, maxTime: const Duration(seconds: 5));
+        final batch =
+            ((reply['cursor'] as Map?)?['firstBatch'] as List?) ?? const [];
+        return fieldPathsOf(batch.cast<Map<String, dynamic>>());
+      } on Object {
+        return const [];
+      }
+    });
 
 /// The Documents tab: query bar, toolbar, one page of results and the
 /// pagination controls.
@@ -78,7 +76,9 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
   /// Sampled fields plus those on the current page, cached so the query
   /// bar only rebuilds its suggestions when the inputs change.
   List<String> _mergeFields(
-      List<String>? sampled, List<Map<String, dynamic>> docs) {
+    List<String>? sampled,
+    List<Map<String, dynamic>> docs,
+  ) {
     if (identical(sampled, _lastSample) &&
         identical(docs, _lastDocs) &&
         _lastFields != null) {
@@ -230,6 +230,42 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     await _openEditor(EditorMode.clone, EJson.stringify(copy));
   }
 
+  /// Edits one top-level field from the Table view with `$set`/`$unset`.
+  /// The value comes from the full document, since the page may be
+  /// projected.
+  Future<void> _editField(Object? id, String field) async {
+    final doc = await _fetchFull(id);
+    if (doc == null || !mounted) return;
+    final client = ref.read(clientProvider);
+    Future<String?> write(Map<String, dynamic> update) async {
+      try {
+        final r = await client.updateOne(widget.namespace, {'_id': id}, update);
+        return r.matched == 0
+            ? 'The document no longer exists; it may have been deleted.'
+            : null;
+      } on Object catch (e) {
+        return describeError(e);
+      }
+    }
+
+    final saved = await showFieldEditSheet(
+      context,
+      field: field,
+      value: doc[field],
+      missing: !doc.containsKey(field),
+      onSave: (v) => write({
+        r'$set': {field: v},
+      }),
+      onRemove: () => write({
+        r'$unset': {field: ''},
+      }),
+    );
+    if (saved == true) {
+      _snack('Field updated');
+      await _ctrl.refresh();
+    }
+  }
+
   Future<void> _delete(Object? id) async {
     final ok = await confirmDialog(
       context,
@@ -332,6 +368,11 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
             view: _view,
             scroll: _scroll,
             actionsFor: actionsFor,
+            onEditField: canWrite
+                ? (i, field) {
+                    if (i < state.ids.length) _editField(state.ids[i], field);
+                  }
+                : null,
             onRetry: () => _ctrl.refresh(),
           ),
         ),
@@ -604,6 +645,7 @@ class _Results extends StatelessWidget {
     required this.view,
     required this.scroll,
     required this.actionsFor,
+    required this.onEditField,
     required this.onRetry,
   });
 
@@ -612,6 +654,7 @@ class _Results extends StatelessWidget {
   final DocumentView view;
   final ScrollController scroll;
   final DocumentActions Function(int index) actionsFor;
+  final void Function(int index, String field)? onEditField;
   final VoidCallback onRetry;
 
   @override
@@ -663,6 +706,7 @@ class _Results extends StatelessWidget {
         firstRowNumber: state.offset + 1,
         previewLength: settings.stringPreviewLength,
         actionsFor: actionsFor,
+        onEditField: onEditField,
         header: banners.isEmpty
             ? null
             : Padding(
