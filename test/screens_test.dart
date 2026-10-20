@@ -10,6 +10,7 @@ import 'package:mongo_wire/mongo_wire.dart';
 import 'package:mongomobile/app.dart';
 import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/models/connection_profile.dart';
+import 'package:mongomobile/services/exporter.dart';
 import 'package:mongomobile/services/importer.dart';
 import 'package:mongomobile/services/native.dart';
 import 'package:mongomobile/state/providers.dart';
@@ -107,8 +108,25 @@ class TextSource implements ImportSource {
 class FakeFiles extends NativeFiles {
   FakeFiles(this.file);
   ImportSource? file;
+  final written = <String, List<int>>{};
+
   @override
   Future<ImportSource?> open(List<String> mimeTypes) async => file;
+
+  @override
+  Future<ExportSink?> create(String name, String mimeType) async =>
+      _MemorySink(written[name] = []);
+}
+
+class _MemorySink implements ExportSink {
+  _MemorySink(this.bytes);
+  final List<int> bytes;
+  @override
+  Future<void> add(List<int> b) async => bytes.addAll(b);
+  @override
+  Future<void> close() async {}
+  @override
+  Future<void> abort() async {}
 }
 
 Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
@@ -966,6 +984,78 @@ void main() {
     expect(store.saved.single.uri,
         'mongodb+srv://app:p%40ss@cluster0.ab.mongodb.net/?appName=phone');
     expect(store.saved.single.name, 'Atlas');
+  });
+
+  testWidgets('favourites, groups, export and import of connections',
+      (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(
+            id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+        const ConnectionProfile(
+            id: 'b',
+            name: 'Prod',
+            uri: 'mongodb+srv://app:s3cret@cluster0.ab.mongodb.net/'),
+        const ConnectionProfile(
+            id: 'c', name: 'Staging', uri: 'mongodb://stage:27017'),
+      ];
+    final files = FakeFiles(null);
+    await pumpApp(tester, client, store, files: files);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Add to favourites').at(1));
+    await tester.pumpAndSettle();
+    expect(find.text('Favourites'), findsOneWidget);
+    expect(store.saved.firstWhere((p) => p.id == 'b').favorite, isTrue);
+
+    await tester.tap(find.byTooltip('Connection actions').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Move to group…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Work');
+    await tester.tap(find.text('Move'));
+    await tester.pumpAndSettle();
+    expect(find.text('Work'), findsOneWidget);
+    await shot(tester, '27-connections-grouped');
+
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export connections…'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Include passwords'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Passphrase'), 'correct horse');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Passphrase again'), 'correct horse');
+    await tester.pump();
+    await tester.tap(find.text('Export'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    await tester.pumpAndSettle();
+    final file = String.fromCharCodes(
+        files.written['mongomobile-connections.json']!);
+    expect(file, contains('Compass Connections'));
+    expect(file, isNot(contains('s3cret')));
+
+    // Import into an empty app.
+    final store2 = MemoryConnectionStore();
+    final files2 = FakeFiles(TextSource('connections.json', file));
+    await pumpApp(tester, client, store2, files: files2);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import connections…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'correct horse');
+    await tester.tap(find.text('Import'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(seconds: 3)));
+    await tester.pumpAndSettle();
+    expect(find.text('Imported 3 connections'), findsOneWidget);
+    expect(store2.saved.firstWhere((p) => p.id == 'b').uri,
+        'mongodb+srv://app:s3cret@cluster0.ab.mongodb.net/');
+    expect(store2.saved.firstWhere((p) => p.id == 'b').favorite, isTrue);
+    expect(store2.saved.firstWhere((p) => p.id == 'c').group, 'Work');
   });
 
   testWidgets('export to a file and drop a collection', (tester) async {
