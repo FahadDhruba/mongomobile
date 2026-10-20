@@ -1058,6 +1058,48 @@ void main() {
     expect(store2.saved.firstWhere((p) => p.id == 'c').group, 'Work');
   });
 
+  testWidgets('shell', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More options'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Shell'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Type help'), findsOneWidget);
+
+    final input = find.byType(TextField).last;
+    await tester.enterText(input, 'use shop');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(find.text('switched to db shop'), findsOneWidget);
+
+    await tester.enterText(input, 'db.orders.find({ orderNo: 1003 }, { orderNo: 1 })');
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(find.textContaining("_id: ObjectId('65a1b2c3d4e5f60718293a03')"),
+        findsOneWidget);
+    expect(find.textContaining('orderNo: 1003'), findsNWidgets(2));
+
+    await tester.enterText(input, "db.orders.insertOne({ x: 1 })");
+    await tester.testTextInput.receiveAction(TextInputAction.send);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Writes are off'), findsOneWidget);
+    await shot(tester, '28-shell');
+
+    // History brings the last command back.
+    await tester.tap(find.byTooltip('Previous command'));
+    await tester.pump();
+    expect(tester.widget<TextField>(input).controller!.text,
+        'db.orders.insertOne({ x: 1 })');
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

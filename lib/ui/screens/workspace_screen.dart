@@ -15,6 +15,7 @@ import 'explorer_drawer.dart';
 import 'overview_screens.dart';
 import 'server_activity_screen.dart';
 import 'settings_screen.dart';
+import 'shell_screen.dart';
 
 /// The connected workspace. The drawer picks a database or collection and
 /// the body shows it. Back goes collection → database → server → disconnect.
@@ -218,6 +219,8 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                     createCollectionFlow(context, ref, db: selection.db);
                   case 'dropDb':
                     dropDatabaseFlow(context, ref, selection.db!);
+                  case 'shell':
+                    openShell(context, db: selection.db);
                   case 'activity':
                     Navigator.push(
                       context,
@@ -279,6 +282,7 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                   ),
                   const PopupMenuDivider(),
                 ],
+                const PopupMenuItem(value: 'shell', child: Text('Shell')),
                 const PopupMenuItem(
                   value: 'activity',
                   child: Text('Server activity'),
