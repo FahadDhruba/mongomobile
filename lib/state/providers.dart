@@ -129,15 +129,31 @@ class Session {
   );
 }
 
-class SessionNotifier extends Notifier<Session?> {
+/// Every open connection, in the order they were opened, and the one on
+/// screen.
+class Sessions {
+  const Sessions(this.all, this.activeId);
+  final List<Session> all;
+  final String? activeId;
+
+  Session? byId(String? id) =>
+      all.where((s) => s.profile.id == id).firstOrNull;
+  Session? get active => byId(activeId);
+}
+
+class SessionsNotifier extends Notifier<Sessions> {
   @override
-  Session? build() => null;
+  Sessions build() => const Sessions([], null);
 
   OidcBrowserFlow? _oidc;
 
-  /// Connects and makes the result the current session.
+  /// Opens [profile] (or switches to it when it is already open) and makes
+  /// it the active connection.
   Future<void> connect(ConnectionProfile profile) async {
-    await disconnect();
+    if (state.byId(profile.id) != null) {
+      state = Sessions(state.all, profile.id);
+      return;
+    }
     final oidc = _oidc = OidcBrowserFlow(
       openUrl: ref.read(nativeBrowserProvider).open,
     );
@@ -147,12 +163,12 @@ class SessionNotifier extends Notifier<Session?> {
       oidc: oidc,
     );
     _oidc = null;
-    state = Session(
+    final session = Session(
       profile: opened.profile,
       client: opened.client,
       tunnel: opened.tunnel,
     );
-    ref.read(selectionProvider.notifier).clear();
+    state = Sessions([...state.all, session], profile.id);
     final connections = ref.read(connectionsProvider.notifier);
     if (!identical(opened.profile, profile)) {
       // The SSH host key was seen for the first time: remember it.
@@ -164,21 +180,55 @@ class SessionNotifier extends Notifier<Session?> {
   /// Stops a browser sign-in that [connect] is waiting for.
   void cancelSignIn() => _oidc?.cancel();
 
-  void setReadOnly(bool readOnly) {
-    final s = state;
-    if (s != null) state = s.copyWith(readOnly: readOnly);
+  void activate(String id) {
+    if (state.byId(id) != null) state = Sessions(state.all, id);
   }
 
-  Future<void> disconnect() async {
-    final s = state;
-    state = null;
-    await s?.client.close();
-    await s?.tunnel?.close();
+  void setReadOnly(String id, bool readOnly) {
+    state = Sessions([
+      for (final s in state.all)
+        s.profile.id == id ? s.copyWith(readOnly: readOnly) : s,
+    ], state.activeId);
+  }
+
+  /// Closes one connection; the next open one becomes active.
+  Future<void> disconnect(String id) async {
+    final s = state.byId(id);
+    if (s == null) return;
+    final rest = [
+      for (final x in state.all)
+        if (x.profile.id != id) x,
+    ];
+    final i = state.all.indexOf(s);
+    state = Sessions(
+      rest,
+      state.activeId != id
+          ? state.activeId
+          : rest.isEmpty
+          ? null
+          : rest[i.clamp(0, rest.length - 1)].profile.id,
+    );
+    await s.client.close();
+    await s.tunnel?.close();
+  }
+
+  Future<void> disconnectAll() async {
+    for (final s in state.all.toList()) {
+      await disconnect(s.profile.id);
+    }
   }
 }
 
-final sessionProvider = NotifierProvider<SessionNotifier, Session?>(
-  SessionNotifier.new,
+final sessionsProvider = NotifierProvider<SessionsNotifier, Sessions>(
+  SessionsNotifier.new,
+);
+
+/// The connection the surrounding workspace shows. Each open connection's
+/// workspace overrides it in its own [ProviderScope], so everything below
+/// (documents, pipelines, indexes…) belongs to that connection.
+final sessionProvider = Provider<Session?>(
+  (ref) => ref.watch(sessionsProvider).active,
+  dependencies: const [],
 );
 
 /// The current client; throws when nothing is connected.
@@ -186,17 +236,21 @@ final clientProvider = Provider<MongoClient>((ref) {
   final s = ref.watch(sessionProvider);
   if (s == null) throw StateError('Not connected');
   return s.client;
-});
+}, dependencies: [sessionProvider]);
 
 final readOnlyProvider = Provider<bool>(
   (ref) => ref.watch(sessionProvider)?.readOnly ?? true,
+  dependencies: [sessionProvider],
 );
 
-/// What the workspace body shows.
+/// What the workspace body shows, and the collections open as tabs.
 class Selection {
-  const Selection({this.db, this.collection});
+  const Selection({this.db, this.collection, this.tabs = const []});
   final String? db;
   final String? collection;
+
+  /// Open collections, oldest first.
+  final List<Namespace> tabs;
 
   Namespace? get namespace =>
       db != null && collection != null ? Namespace(db!, collection!) : null;
@@ -206,19 +260,72 @@ class SelectionNotifier extends Notifier<Selection> {
   @override
   Selection build() => const Selection();
 
+  static const maxTabs = 8;
+
   void clear() => state = const Selection();
-  void database(String db) => state = Selection(db: db);
-  void collection(String db, String coll) =>
-      state = Selection(db: db, collection: coll);
+  void database(String db) => state = Selection(db: db, tabs: state.tabs);
+
+  /// Shows a collection, opening a tab for it (the oldest closes past
+  /// [maxTabs]).
+  void collection(String db, String coll) {
+    final ns = Namespace(db, coll);
+    var tabs = state.tabs;
+    if (!tabs.contains(ns)) {
+      tabs = [...tabs, ns];
+      if (tabs.length > maxTabs) tabs = tabs.sublist(tabs.length - maxTabs);
+    }
+    state = Selection(db: db, collection: coll, tabs: tabs);
+  }
+
+  /// Closes a collection's tab; the neighbouring tab (or its database)
+  /// shows next.
+  void closeTab(Namespace ns) {
+    final i = state.tabs.indexOf(ns);
+    if (i < 0) return;
+    final tabs = [...state.tabs]..removeAt(i);
+    if (state.namespace != ns) {
+      state = Selection(db: state.db, collection: state.collection, tabs: tabs);
+    } else if (tabs.isEmpty) {
+      state = Selection(db: ns.db);
+    } else {
+      final next = tabs[i.clamp(0, tabs.length - 1)];
+      state = Selection(db: next.db, collection: next.collection, tabs: tabs);
+    }
+  }
+
+  /// Renames an open tab after its collection was renamed.
+  void renamed(Namespace from, Namespace to) {
+    state = Selection(
+      db: state.db,
+      collection: state.namespace == from ? to.collection : state.collection,
+      tabs: [for (final t in state.tabs) t == from ? to : t],
+    );
+  }
+
+  /// Forgets tabs of a dropped collection or database.
+  void dropped({required String db, String? collection}) {
+    bool gone(Namespace t) =>
+        t.db == db && (collection == null || t.collection == collection);
+    final tabs = [
+      for (final t in state.tabs)
+        if (!gone(t)) t,
+    ];
+    final current = state.namespace;
+    state = current != null && !gone(current)
+        ? Selection(db: state.db, collection: state.collection, tabs: tabs)
+        : collection == null
+        ? Selection(tabs: tabs)
+        : Selection(db: db, tabs: tabs);
+  }
 
   /// Moves one level up. Returns false when already at the top.
   bool up() {
     if (state.collection != null) {
-      state = Selection(db: state.db);
+      state = Selection(db: state.db, tabs: state.tabs);
       return true;
     }
     if (state.db != null) {
-      state = const Selection();
+      state = Selection(tabs: state.tabs);
       return true;
     }
     return false;
@@ -227,18 +334,20 @@ class SelectionNotifier extends Notifier<Selection> {
 
 final selectionProvider = NotifierProvider<SelectionNotifier, Selection>(
   SelectionNotifier.new,
+  dependencies: const [],
 );
 
 final databasesProvider = FutureProvider<List<DatabaseInfo>>((ref) {
   final client = ref.watch(clientProvider);
   return client.listDatabases();
-});
+}, dependencies: [clientProvider]);
 
 final collectionsProvider = FutureProvider.family<List<CollectionInfo>, String>(
   (ref, db) {
     final client = ref.watch(clientProvider);
     return client.listCollections(db);
   },
+  dependencies: [clientProvider],
 );
 
 /// Limits how many stats requests run at once, so browsing the tree never
@@ -271,7 +380,7 @@ class Semaphore {
 final _statsSemaphoreProvider = Provider<Semaphore>((ref) {
   ref.watch(clientProvider);
   return Semaphore(2);
-});
+}, dependencies: [clientProvider]);
 
 final collectionStatsProvider =
     FutureProvider.family<CollectionStats?, Namespace>((ref, ns) {
@@ -279,7 +388,7 @@ final collectionStatsProvider =
       return ref
           .watch(_statsSemaphoreProvider)
           .run(() => client.collectionStats(ns));
-    });
+    }, dependencies: [clientProvider, _statsSemaphoreProvider]);
 
 /// Turns any error into a message for the UI.
 String describeError(Object error) {

@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mongo_wire/mongo_wire.dart';
 
 import '../services/pipeline.dart';
+import 'providers.dart';
 
 /// The pipeline being built for one collection.
 class AggregationState {
@@ -215,4 +216,6 @@ class AggregationController extends Notifier<AggregationState> {
 final aggregationProvider = NotifierProvider.autoDispose
     .family<AggregationController, AggregationState, AggregationKey>(
       AggregationController.new,
+      // Per connection, like the rest of the workspace.
+      dependencies: [sessionProvider],
     );

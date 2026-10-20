@@ -15,7 +15,7 @@ Future<ProviderContainer> connected(FakeMongoClient client) async {
     connectorProvider.overrideWithValue(FakeConnector(client)),
     connectionStoreProvider.overrideWithValue(MemoryConnectionStore()),
   ]);
-  await container.read(sessionProvider.notifier).connect(
+  await container.read(sessionsProvider.notifier).connect(
       const ConnectionProfile(id: '1', name: 'test', uri: 'mongodb://x'));
   return container;
 }

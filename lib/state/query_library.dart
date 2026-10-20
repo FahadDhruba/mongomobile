@@ -21,7 +21,7 @@ class QueryLibraryNotifier extends AsyncNotifier<Map<String, CollectionLibrary>>
       ref.read(queryLibraryStoreProvider).load();
 
   String _key(Namespace ns) {
-    final id = ref.read(sessionProvider)?.profile.id ?? '-';
+    final id = ref.read(sessionsProvider).activeId ?? '-';
     return '$id/$ns';
   }
 

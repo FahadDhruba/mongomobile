@@ -551,4 +551,5 @@ class DocumentsController extends Notifier<DocumentsState> {
 
 final documentsProvider = NotifierProvider.autoDispose
     .family<DocumentsController, DocumentsState, Namespace>(
-        DocumentsController.new);
+        DocumentsController.new,
+        dependencies: [clientProvider]);
