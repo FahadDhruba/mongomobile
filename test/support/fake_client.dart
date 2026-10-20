@@ -1,5 +1,6 @@
 import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/services/connection_store.dart';
+import 'package:mongomobile/services/query_library.dart';
 import 'package:mongomobile/services/settings_store.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongo_wire/mongo_wire.dart';
@@ -520,4 +521,15 @@ class MemorySettingsStore implements SettingsStore {
 
   @override
   Future<void> save(AppSettings settings) async => saved = settings;
+}
+
+class MemoryQueryLibraryStore implements QueryLibraryStore {
+  Map<String, CollectionLibrary> saved = {};
+
+  @override
+  Future<Map<String, CollectionLibrary>> load() async => {...saved};
+
+  @override
+  Future<void> save(Map<String, CollectionLibrary> all) async =>
+      saved = {...all};
 }
