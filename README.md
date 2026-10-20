@@ -58,6 +58,15 @@ removes saved connections.
     uses, so files move between the two. Passwords are left out unless you
     set a passphrase, which encrypts them (AES-256-GCM); Compass imports
     such a file without the passwords.
+- **Tabs and several connections:** collections you open stay open as
+  tabs (up to 8) and keep their query and page. Tap the title to open
+  another connection, switch between open ones, or close one; each keeps
+  its own tabs and state.
+- **In-use encryption:** with a key vault and a local master key or AWS KMS
+  credentials (connection settings → In-use encryption), client-side
+  encrypted fields (CSFLE) show decrypted and are encrypted again with the
+  same key and algorithm when you save an edit. Queryable Encryption fields
+  are shown as stored.
 - **Shell:** mongosh-style commands from the ⋮ menu: `show dbs`, `use`,
   `db.<collection>.find(…).sort(…).limit(…)`, `it` for more, `aggregate`,
   inserts, updates, deletes, indexes, `db.runCommand(…)` and more, with
