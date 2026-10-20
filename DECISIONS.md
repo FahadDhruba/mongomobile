@@ -95,6 +95,7 @@ One line per decision: what was decided and why.
 - In-use encryption is client-side field level encryption (FLE1, AEAD_AES_256_CBC_HMAC_SHA_512) written in Dart: libmongocrypt is a native library with no Dart binding for Android. It was checked both ways against libmongocrypt 1.21 (pymongo): every type it encrypts decrypts here, deterministic encryption here gives libmongocrypt's exact bytes, and values encrypted here decrypt in pymongo.
 - Decryption is for what the app shows and edits; saving re-encrypts exactly the fields that were encrypted (same data key and algorithm), so plaintext never goes back to the server. New fields are not encrypted automatically, since that needs the server's schema rules and query analysis (mongocryptd or crypt_shared, which don't run on Android).
 - Master keys: local (96-byte key) and AWS KMS (SigV4-signed `Decrypt`, untested against real AWS). Azure, GCP and KMIP keys say they aren't supported. Queryable Encryption values are recognised and shown as stored, not decrypted: their stored format needs server-derived tokens to read.
+- Atlas shared and Flex tiers refuse `$currentOp` with `allUsers` and the `profile` command. The app then lists the user's own operations (with a note saying so) and explains that the profiler isn't available, pointing to Atlas's Query Profiler, instead of showing the raw error. `admin`, `local` and `config` are left out of the profiler's database list. The same fallback applies to index build progress and the shell's `db.currentOp()`.
 
 ## Blockers and fallbacks
 
