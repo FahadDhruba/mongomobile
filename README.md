@@ -45,6 +45,19 @@ removes saved connections.
   SCRAM-SHA-256, SCRAM-SHA-1 and PLAIN. A **Test connection** button
   reports the server version, topology and round trip. Optional biometric
   lock.
+  - Edit a connection as a string or as a **form** (hosts, auth method,
+    TLS, replica set, read preference, timeouts); unknown options are kept.
+  - **Favourites** (the star) and **groups** ("Move to group…") organise
+    the list.
+  - **Export and import** saved connections in the file format Compass
+    uses, so files move between the two. Passwords are left out unless you
+    set a passphrase, which encrypts them (AES-256-GCM); Compass imports
+    such a file without the passwords.
+- **Shell:** mongosh-style commands from the ⋮ menu: `show dbs`, `use`,
+  `db.<collection>.find(…).sort(…).limit(…)`, `it` for more, `aggregate`,
+  inserts, updates, deletes, indexes, `db.runCommand(…)` and more, with
+  shell syntax like `ObjectId('…')`. History, quick-insert keys, and write
+  commands only in write mode. It runs MongoDB commands, not JavaScript.
 - **Browsing:** a drawer with the connection, then databases and their
   collections with document counts and sizes, plus search. Database and
   server overviews.

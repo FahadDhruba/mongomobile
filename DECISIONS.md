@@ -76,6 +76,13 @@ One line per decision: what was decided and why.
 - Server activity rates use the server's own `localTime` between `serverStatus` samples, so slow replies over mobile networks don't distort them; counters that go backwards (a restart) count as zero. Two minutes (60 samples) are kept, and polling pauses on request and stops when the screen closes.
 - The operations list leaves out the app's own `$currentOp` and, unless asked, system and idle operations; Kill (`killOp`) needs write mode and a confirmation, since it can leave a write half done.
 - Slow queries read the latest 50 `system.profile` entries of a chosen database; changing the profiler level needs write mode. Atlas shared tiers don't allow the profiler, which shows as the server's error.
+- The connection form edits the same connection string the string field shows, so both stay in step and saving keeps one source of truth; options without a field are listed and written back unchanged.
+- Connection export uses Compass's "Compass Connections" v1 JSON so files work in both apps. Compass's own encrypted passwords use a scheme I could not match safely, so imports from Compass come in without passwords (the app says how many need one). MongoMobile's passwords go in a separate `mongomobile` section, encrypted with AES-256-GCM and a PBKDF2-SHA256 key (200,000 rounds, run off the UI thread); there is deliberately no plain-text option.
+- Importing merges by connection id: the same file imported twice updates rather than duplicates.
+- Favourites come first, then groups alphabetically, then everything else by last use. A group is a free-text name on the connection, not a separate object, so empty groups simply disappear.
+- The shell is an interpreter for mongosh's MongoDB methods, not a JavaScript runtime: running real mongosh would need a JS engine with native libraries, adding size and a second language runtime for little gain on a phone. Arguments use the app's shell-syntax Extended JSON parser; unsupported input gets a clear "not JavaScript" message and `db.runCommand` covers anything else. Every command in its help was run against mongo:7 in a test.
+- Shell writes follow write mode, including commands sent through `db.runCommand` (insert, update, delete, drop, create, collMod, user and profile changes, `$out`/`$merge`), so read-only means read-only everywhere.
+- Shell history is kept per connection for as long as the app runs, not saved, since commands can contain sensitive values.
 
 ## Blockers and fallbacks
 
