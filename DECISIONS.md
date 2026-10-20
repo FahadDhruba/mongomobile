@@ -71,6 +71,11 @@ One line per decision: what was decided and why.
 - Field and type percentages count documents that have the field, so nested fields are relative to their parent documents, as in Compass.
 - The Validation tab finds its sample documents with the rules themselves as the filter (passes) and `{$nor: [rules]}` (fails), which is how Compass does it; generated `$jsonSchema` rules mark fields present in every sampled document as required, and were checked on mongo:7 (sample accepted, wrong types and missing fields rejected).
 - The tab bar scrolls (five tabs don't fit a phone's width); Schema and Validation keep their state when you switch tabs.
+- Index usage comes from `$indexStats` (counts since the server or the index started); builds in progress come from `$currentOp` matched on `createIndexes` for the collection, polled every 2 s only while a build runs. Both quietly show nothing when the user lacks the privilege, rather than an error.
+- Hiding an index uses `collMod {index: {name, hidden}}` and asks first; the `_id_` index can't be hidden or dropped.
+- Server activity rates use the server's own `localTime` between `serverStatus` samples, so slow replies over mobile networks don't distort them; counters that go backwards (a restart) count as zero. Two minutes (60 samples) are kept, and polling pauses on request and stops when the screen closes.
+- The operations list leaves out the app's own `$currentOp` and, unless asked, system and idle operations; Kill (`killOp`) needs write mode and a confirmation, since it can leave a write half done.
+- Slow queries read the latest 50 `system.profile` entries of a chosen database; changing the profiler level needs write mode. Atlas shared tiers don't allow the profiler, which shows as the server's error.
 
 ## Blockers and fallbacks
 

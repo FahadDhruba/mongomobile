@@ -134,8 +134,16 @@ removes saved connections.
   Settings) and offers **Download and install**. The APK is checked against
   the release's SHA-256 file and handed to Android's installer, which keeps
   your data because every release is signed with the same key.
-- **Indexes:** list with sizes and flags (unique, sparse, TTL, partial,
-  hidden, text, geo), create and drop.
+- **Indexes:** list with sizes, flags (unique, sparse, TTL, partial,
+  hidden, collation, text, geo, hashed, wildcard) and how often each index
+  was used since the server started (unused ones are highlighted). Create
+  indexes with a collation or a wildcard projection, hide or unhide an
+  index without dropping it, and watch builds in progress with a progress
+  bar.
+- **Server activity:** live charts of operations per second, connections,
+  network and memory (from `serverStatus` every 2 s), the running
+  operations with a Kill button (write mode), and slow queries from a
+  database's profiler, whose level you can change.
 - **Safety:** every connection opens in read-only mode; writes need an
   explicit switch to write mode.
 - Dark theme by default, plus a light theme. Bundled Inter and JetBrains
