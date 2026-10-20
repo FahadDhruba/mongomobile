@@ -1,0 +1,122 @@
+{
+ "master": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5f",
+ "keyDoc": {
+  "_id": {
+   "$binary": {
+    "base64": "M1LeUd9DSJiBhU40B4pelA==",
+    "subType": "04"
+   }
+  },
+  "keyAltNames": [
+   "mm-test"
+  ],
+  "keyMaterial": {
+   "$binary": {
+    "base64": "kNNUh+VWetHOCz0rg7+DQVcoTEcVNm/6jXqHtYLd8tpmY1Y/Qq45TBu6MHeQEWk4SwPb4NLXeH+U7pvUB2lFZpiSFOBt5muVqnliJkshuP8v5WrzUJe9i1AYF8rHC34ofmO7Cp0P+vpNcmIPQCHN9jGzcqVMuRDQkkcsQ6KrhZx4uH/AiFS69pVBMV61BW58CwvDCmAsveTkkIC7qTDFDw==",
+    "subType": "00"
+   }
+  },
+  "creationDate": {
+   "$date": {
+    "$numberLong": "1792497381801"
+   }
+  },
+  "updateDate": {
+   "$date": {
+    "$numberLong": "1792497381801"
+   }
+  },
+  "status": {
+   "$numberInt": "0"
+  },
+  "masterKey": {
+   "provider": "local"
+  }
+ },
+ "values": {
+  "str.Deterministic": {
+   "plain": "Ada Lovelace",
+   "cipher": "ATNS3lHfQ0iYgYVONAeKXpQCnKYDi1m/AiOwoi/S6WUnUhIZBoQzdLQec71C4vrS9uSpZ6gBmRGjvWG8IlNhqPJPDBrVksMimgsGzICEXuXy41oWmLcrZwdnGUBBg1v9iOo="
+  },
+  "str.Random": {
+   "plain": "Ada Lovelace",
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQC2NBuV+2l4l8Rq0301Sl2Z7rw2Uab9/0MrBjNlZJlfhaxZZJKVa78EXhCzr/esIFFFZ7+avSDTiqTiXkJoWupQv4elapLAs7XgfDbXFaoGcE="
+  },
+  "int.Deterministic": {
+   "plain": {
+    "$numberInt": "42"
+   },
+   "cipher": "ATNS3lHfQ0iYgYVONAeKXpQQwsCxWSyl+l/WOopy7qOZNTZGHJ+pWOiBc2QbzWgggpMEJTpVLfZJNOu6xeJjMrSROuK+N4dJmvdpkXmzWIazdg=="
+  },
+  "int.Random": {
+   "plain": {
+    "$numberInt": "42"
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQQqS5p6d48PKTmkSC182wNv1sYK13wWqqV8LJgjFSzKrh6MzekllecIXwImKeQSJRWK+YwMJhN7AITCsvtcxHEXw=="
+  },
+  "long.Deterministic": {
+   "plain": {
+    "$numberLong": "1099511627776"
+   },
+   "cipher": "ATNS3lHfQ0iYgYVONAeKXpQSLDc4N1mNGo3KdUv3lGBKyNP41na5i5jrPclADq4nqOKul/CeLHNiPRXoNhrVBD6sK3+e0y29GG8KnHgMZKi6fA=="
+  },
+  "long.Random": {
+   "plain": {
+    "$numberLong": "1099511627776"
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQSxOGUPAdiGuoZ8syEelob5WqYRudu6b3iS+kmC7kGplLYKCuRtI7zSrfswkLp8BfHvHv0kdEglOHO7j48lhydxQ=="
+  },
+  "double.Random": {
+   "plain": {
+    "$numberDouble": "2.5"
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQBuq9awa+0tDPWKbZed5bpu8R7tZpsz8RbLoi/QVGZpxsaToyi1JZz4Kgh7autE+jWjdn6TpYnpy5zJE3SfoSC7A=="
+  },
+  "bool.Random": {
+   "plain": true,
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQI04Z2f/kgYky3j6FrklhBkBBzS3L2OMYpM4yHTcFTBDoy0po0fQRqyoiGmg89a9v/Ft8LGqLKOJyICgCarmruBw=="
+  },
+  "date.Deterministic": {
+   "plain": {
+    "$date": {
+     "$numberLong": "1714521600000"
+    }
+   },
+   "cipher": "ATNS3lHfQ0iYgYVONAeKXpQJm8uCQzmVlECL5LQ6PIJDlArMWrIH6E5wbjk8tc5R4Z/mZiPC9WJ+0fgJJkWfuVi7BlVxqBusUyPf7OgSjBGlsQ=="
+  },
+  "date.Random": {
+   "plain": {
+    "$date": {
+     "$numberLong": "1714521600000"
+    }
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQJxUQM1/RVd038XTYt+JPAakhn7SQg67aLYjf2pB295zTd6XzOxI2hkT1rTHtbJaB6ch4sEa6GYG/+W4frmbiUlg=="
+  },
+  "doc.Random": {
+   "plain": {
+    "a": {
+     "$numberInt": "1"
+    },
+    "b": [
+     "x"
+    ]
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQDTUxNNGK+PZ07ryFR049YV3EpI3Hpy8pzSiBs2cDj9Cvqw8WYRcE9I/1dEJbFT54OKk5gRZbSuTGfCgkwvYd88VMZLWee6rGhdRERZmD72f0="
+  },
+  "arr.Random": {
+   "plain": [
+    {
+     "$numberInt": "1"
+    },
+    "two"
+   ],
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQE+Qcpx7c0E5hf2Po0glkgxma2dJVduxJRJW4qz7folz6hCC9FVtFw5UUShktaHi3NAJjIR3BteZ+gD5fVIffaxtMkKNZSIz0HmCIdIKrnx14="
+  },
+  "dec.Random": {
+   "plain": {
+    "$numberDecimal": "19.99"
+   },
+   "cipher": "AjNS3lHfQ0iYgYVONAeKXpQT5O3FpOwT4zgtkNoI6wcAZHml8A9z0vV4MOo+Z2+sObUMSOcX12QMyDNTiA/URMhYXwTRsCYFKkgmqU1G1V8vpyggpamQ7fCMuo1KWUz3cag="
+  }
+ }
+}

@@ -8,6 +8,8 @@ export 'src/cancel.dart';
 export 'src/client.dart';
 export 'src/ejson/ejson.dart';
 export 'src/errors.dart';
+export 'src/fle/aead.dart';
+export 'src/fle/fle.dart';
 export 'src/wire/connection_string.dart' show ConnectionString, HostAddress;
 export 'src/wire/scram.dart'
     show ScramConversation, ScramMechanism, pbkdf2, saslPrep;
