@@ -42,7 +42,12 @@ removes saved connections.
 - **Connections:** any number of saved connections, stored encrypted in
   Android secure storage. `mongodb://` and `mongodb+srv://` strings, TLS
   (with an optional custom CA or "allow invalid certificates"),
-  SCRAM-SHA-256, SCRAM-SHA-1 and PLAIN. A **Test connection** button
+  SCRAM-SHA-256, SCRAM-SHA-1, LDAP (PLAIN), X.509 client certificates,
+  AWS IAM (access key, secret and optional session token) and OIDC
+  (sign-in in the browser, or a pasted access token).
+  - **SSH tunnel** (password or private key, with the server's host key
+    saved on first use and checked after) or **SOCKS5 proxy** (optional
+    user name and password) per connection. TLS still runs end to end. A **Test connection** button
   reports the server version, topology and round trip. Optional biometric
   lock.
   - Edit a connection as a string or as a **form** (hosts, auth method,
