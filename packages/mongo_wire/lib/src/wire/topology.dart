@@ -6,6 +6,7 @@ import 'connection_string.dart';
 import 'handshake.dart';
 import 'pool.dart';
 import 'srv.dart';
+import 'tunnel.dart';
 
 /// The server picked for a connection string and the pool for it.
 final class SelectedServer {
@@ -31,8 +32,9 @@ Future<SelectedServer> selectServer(
   required HandshakeOptions handshakeOptions,
   required DnsResolver dns,
   int poolSize = 4,
+  Tunnel? tunnel,
 }) {
-  return _select(cs, tlsFor, handshakeOptions, dns, poolSize).timeout(
+  return _select(cs, tlsFor, handshakeOptions, dns, poolSize, tunnel).timeout(
     cs.serverSelectionTimeout,
     onTimeout: () {
       throw MongoTimeoutError(
@@ -50,6 +52,7 @@ Future<SelectedServer> _select(
   HandshakeOptions handshakeOptions,
   DnsResolver dns,
   int poolSize,
+  Tunnel? tunnel,
 ) async {
   var cs = original;
   cs = await resolveConnectionString(cs, dns);
@@ -61,6 +64,7 @@ Future<SelectedServer> _select(
     handshakeOptions: handshakeOptions,
     maxSize: poolSize,
     connectTimeout: cs.connectTimeout,
+    tunnel: tunnel,
   );
 
   Future<SelectedServer> use(
@@ -92,6 +96,7 @@ Future<SelectedServer> _select(
             h,
             tls: tls,
             timeout: cs.connectTimeout,
+            tunnel: tunnel,
           );
           try {
             seen[h] = await handshake(

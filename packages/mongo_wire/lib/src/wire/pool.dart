@@ -6,6 +6,7 @@ import '../errors.dart';
 import 'connection.dart';
 import 'connection_string.dart';
 import 'handshake.dart';
+import 'tunnel.dart';
 
 /// A small pool of authenticated connections to one server.
 ///
@@ -18,6 +19,7 @@ class ConnectionPool {
     required this.handshakeOptions,
     this.maxSize = 4,
     this.connectTimeout = const Duration(seconds: 10),
+    this.tunnel,
   });
 
   final HostAddress address;
@@ -25,6 +27,7 @@ class ConnectionPool {
   final HandshakeOptions handshakeOptions;
   final int maxSize;
   final Duration connectTimeout;
+  final Tunnel? tunnel;
 
   final List<WireConnection> _idle = [];
   final Queue<Completer<WireConnection>> _waiters = Queue();
@@ -47,6 +50,7 @@ class ConnectionPool {
         address,
         tls: tls,
         timeout: connectTimeout,
+        tunnel: tunnel,
       );
       try {
         lastDescription = await handshake(

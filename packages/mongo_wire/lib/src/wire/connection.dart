@@ -7,6 +7,7 @@ import '../bson/codec.dart';
 import '../cancel.dart';
 import '../errors.dart';
 import 'connection_string.dart';
+import 'tunnel.dart';
 
 /// TLS settings for a connection.
 final class TlsOptions {
@@ -14,6 +15,8 @@ final class TlsOptions {
     this.enabled = false,
     this.allowInvalidCertificates = false,
     this.caCertificatePem,
+    this.clientCertificatePem,
+    this.clientKeyPassword,
   });
 
   final bool enabled;
@@ -21,6 +24,48 @@ final class TlsOptions {
 
   /// Extra trusted CA certificates in PEM format, for self-signed servers.
   final String? caCertificatePem;
+
+  /// The client certificate and its private key in PEM format (one file,
+  /// like `tlsCertificateKeyFile`), for X.509 sign-in or servers that ask
+  /// for a client certificate.
+  final String? clientCertificatePem;
+
+  /// The password of an encrypted private key.
+  final String? clientKeyPassword;
+
+  /// The security context, or null for the platform default.
+  SecurityContext? context() {
+    final ca = caCertificatePem?.trim() ?? '';
+    final cert = clientCertificatePem?.trim() ?? '';
+    if (ca.isEmpty && cert.isEmpty) return null;
+    final c = SecurityContext(withTrustedRoots: true);
+    if (ca.isNotEmpty) c.setTrustedCertificatesBytes(utf8.encode(ca));
+    if (cert.isNotEmpty) {
+      final blocks = RegExp(
+        r'-----BEGIN ([A-Z ]+)-----[\s\S]*?-----END \1-----',
+      ).allMatches(cert).toList();
+      final certs = blocks.where((m) => m[1] == 'CERTIFICATE').map((m) => m[0]);
+      final key = blocks
+          .where((m) => m[1]!.contains('PRIVATE KEY'))
+          .map((m) => m[0])
+          .firstOrNull;
+      if (certs.isEmpty || key == null) {
+        throw MongoConfigError(
+          'The client certificate needs a CERTIFICATE and a PRIVATE KEY '
+          'block in PEM format',
+        );
+      }
+      try {
+        c.useCertificateChainBytes(utf8.encode(certs.join('\n')));
+        c.usePrivateKeyBytes(utf8.encode(key), password: clientKeyPassword);
+      } on TlsException catch (e) {
+        throw MongoConfigError(
+          'The client certificate or key could not be read: ${e.message}',
+        );
+      }
+    }
+    return c;
+  }
 }
 
 /// A reply and the number of bytes it took on the wire.
@@ -55,34 +100,35 @@ class WireConnection {
     _socket.done.then<void>((_) {}, onError: _onError);
   }
 
-  /// Opens a TCP or TLS socket to [address].
+  /// Opens a TCP or TLS socket to [address], through [tunnel] when given.
   static Future<WireConnection> open(
     HostAddress address, {
     TlsOptions tls = const TlsOptions(),
     Duration timeout = const Duration(seconds: 10),
+    Tunnel? tunnel,
   }) async {
     Socket socket;
     try {
-      if (tls.enabled) {
-        SecurityContext? context;
-        final pem = tls.caCertificatePem;
-        if (pem != null && pem.trim().isNotEmpty) {
-          context = SecurityContext(withTrustedRoots: true)
-            ..setTrustedCertificatesBytes(utf8.encode(pem));
-        }
+      final via = tunnel == null ? address : await tunnel.forward(address);
+      if (tls.enabled && tunnel == null) {
         socket = await SecureSocket.connect(
           address.host,
           address.port,
-          context: context,
+          context: tls.context(),
           timeout: timeout,
           onBadCertificate: tls.allowInvalidCertificates ? (_) => true : null,
         );
       } else {
-        socket = await Socket.connect(
-          address.host,
-          address.port,
-          timeout: timeout,
-        );
+        socket = await Socket.connect(via.host, via.port, timeout: timeout);
+        if (tls.enabled) {
+          // Through a tunnel: TLS runs end to end and checks the real name.
+          socket = await SecureSocket.secure(
+            socket,
+            host: address.host,
+            context: tls.context(),
+            onBadCertificate: tls.allowInvalidCertificates ? (_) => true : null,
+          ).timeout(timeout);
+        }
       }
     } on HandshakeException catch (e) {
       throw MongoNetworkError(
