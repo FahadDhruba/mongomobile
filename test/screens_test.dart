@@ -14,6 +14,7 @@ import 'package:mongomobile/services/importer.dart';
 import 'package:mongomobile/services/native.dart';
 import 'package:mongomobile/state/providers.dart';
 import 'package:mongomobile/state/query_library.dart';
+import 'package:mongomobile/theme/app_theme.dart';
 import 'package:mongomobile/ui/screens/aggregations_view.dart';
 import 'package:mongomobile/ui/screens/code_export_sheet.dart';
 
@@ -658,6 +659,72 @@ void main() {
     await tester.tap(find.text('Schema'));
     await tester.pumpAndSettle();
     expect(find.text('Analyze again'), findsOneWidget);
+  });
+
+  testWidgets('validation tab', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Validation'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Validation'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Enter rules to see'), findsOneWidget);
+
+    final rules = find.byType(TextField).last;
+    await tester.enterText(rules, '{ total: { \$gte: 80 } }');
+    await tester.pump(const Duration(milliseconds: 700));
+    await tester.pumpAndSettle();
+    expect(find.text('Passes validation'), findsOneWidget);
+    expect(find.text('Fails validation'), findsOneWidget);
+    await shot(tester, '23-validation');
+    expect(find.textContaining('1035', findRichText: true), findsOneWidget);
+
+    // Updating needs write mode.
+    final update = find.widgetWithText(AccentButton, 'Update');
+    expect(tester.widget<AccentButton>(update).onPressed, isNull);
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Action'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Warning').last);
+    await tester.pumpAndSettle();
+    await tester.tap(update);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update').last);
+    await tester.pumpAndSettle();
+    expect(client.collMods.last.$2, {
+      'validator': {
+        'total': {r'$gte': 80},
+      },
+      'validationLevel': 'strict',
+      'validationAction': 'warn',
+    });
+    expect(find.text('Validation updated'), findsOneWidget);
+    // The tab reloads with the saved rules.
+    expect(find.textContaining('80'), findsWidgets);
+
+    await tester.tap(find.text('Generate'));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TextField>(find.byType(TextField).last).controller!.text,
+      contains(r'$jsonSchema'),
+    );
   });
 
   testWidgets('export to a file and drop a collection', (tester) async {

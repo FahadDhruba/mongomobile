@@ -51,6 +51,13 @@ class FakeMongoClient implements MongoClient {
         }
         continue;
       }
+      if (e.key == r'$or' || e.key == r'$nor') {
+        final any = (e.value as List).any(
+          (f) => matches(doc, f as Map<String, dynamic>),
+        );
+        if (any != (e.key == r'$or')) return false;
+        continue;
+      }
       final v = doc[e.key];
       final cond = e.value;
       if (cond is Map<String, dynamic> &&

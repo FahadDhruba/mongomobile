@@ -11,8 +11,10 @@ import 'aggregations_view.dart';
 import 'documents_view.dart';
 import 'indexes_view.dart';
 import 'schema_view.dart';
+import 'validation_view.dart';
 
-/// A collection with Documents, Aggregations, Schema and Indexes tabs.
+/// A collection with Documents, Aggregations, Schema, Indexes and
+/// Validation tabs.
 class CollectionScreen extends ConsumerWidget {
   const CollectionScreen({super.key, required this.namespace});
 
@@ -46,7 +48,7 @@ class CollectionScreen extends ConsumerWidget {
     ];
 
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -57,8 +59,10 @@ class CollectionScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 if (facts.isNotEmpty)
-                  Text(facts.join('  ·  '),
-                      style: TextStyle(color: c.muted, fontSize: 12)),
+                  Text(
+                    facts.join('  ·  '),
+                    style: TextStyle(color: c.muted, fontSize: 12),
+                  ),
                 TabBar(
                   isScrollable: true,
                   tabAlignment: TabAlignment.start,
@@ -67,6 +71,7 @@ class CollectionScreen extends ConsumerWidget {
                     Tab(text: 'Aggregations'),
                     Tab(text: 'Schema'),
                     Tab(text: 'Indexes'),
+                    Tab(text: 'Validation'),
                   ],
                 ),
               ],
@@ -83,6 +88,14 @@ class CollectionScreen extends ConsumerWidget {
                 ),
                 SchemaView(namespace: namespace),
                 IndexesView(namespace: namespace, info: info),
+                ValidationView(
+                  // Starts over when the saved rules change.
+                  key: ValueKey(
+                    EJson.stringify(info?.options ?? const {}, pretty: false),
+                  ),
+                  namespace: namespace,
+                  info: info,
+                ),
               ],
             ),
           ),
