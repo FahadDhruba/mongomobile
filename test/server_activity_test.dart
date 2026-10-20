@@ -88,4 +88,39 @@ void main() {
     expect(e.returned, 3);
     expect(e.keysExamined, isNull);
   });
+
+  test('currentOpCommand can ask for the own user only', () {
+    Map stage(Map<String, dynamic> c) =>
+        ((c['pipeline'] as List).first as Map)[r'$currentOp'] as Map;
+    final own = stage(currentOpCommand(includeIdle: false, allUsers: false));
+    expect(own['allUsers'], false);
+    expect(own['idleConnections'], false);
+    expect(stage(currentOpCommand(includeIdle: true))['allUsers'], true);
+  });
+
+  test('restriction errors are recognised', () {
+    final allUsers = MongoServerError(
+      r"Error validating $currentOp value. arg=allUsers isn't allowed in this "
+      'atlas tier',
+      code: 8000,
+    );
+    expect(isAllUsersRestricted(allUsers), isTrue);
+    expect(isAllUsersRestricted(Exception('socket closed')), isFalse);
+
+    expect(
+      isCommandRestricted(MongoServerError('CMD_NOT_ALLOWED: profile')),
+      isTrue,
+    );
+    expect(
+      isCommandRestricted(
+        Exception('(Unauthorized) not authorized on local to execute command'),
+      ),
+      isTrue,
+    );
+    expect(isCommandRestricted(Exception('socket closed')), isFalse);
+    expect(
+      isAllUsersRestricted(MongoServerError('CMD_NOT_ALLOWED: profile')),
+      isFalse,
+    );
+  });
 }

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mongo_wire/mongo_wire.dart';
 
+import '../../services/server_activity.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../util/format.dart';
@@ -72,26 +73,35 @@ class IndexBuild {
 /// not see other operations.
 final indexBuildsProvider = FutureProvider.autoDispose
     .family<List<IndexBuild>, Namespace>((ref, ns) async {
-      try {
-        final reply = await ref.watch(clientProvider).runCommand('admin', {
-          'aggregate': 1,
-          'pipeline': [
-            {
-              r'$currentOp': {'allUsers': true, 'idleConnections': false},
-            },
-            {
-              r'$match': {
-                'command.createIndexes': ns.collection,
-                r'$or': [
-                  {'ns': '$ns'},
-                  {'ns': '${ns.db}.\$cmd'},
-                  {'command.\$db': ns.db},
-                ],
+      final client = ref.watch(clientProvider);
+      Future<Map<String, dynamic>> run({required bool allUsers}) =>
+          client.runCommand('admin', {
+            'aggregate': 1,
+            'pipeline': [
+              {
+                r'$currentOp': {'allUsers': allUsers, 'idleConnections': false},
               },
-            },
-          ],
-          'cursor': {'batchSize': 100},
-        }, maxTime: const Duration(seconds: 5));
+              {
+                r'$match': {
+                  'command.createIndexes': ns.collection,
+                  r'$or': [
+                    {'ns': '$ns'},
+                    {'ns': '${ns.db}.\$cmd'},
+                    {'command.\$db': ns.db},
+                  ],
+                },
+              },
+            ],
+            'cursor': {'batchSize': 100},
+          }, maxTime: const Duration(seconds: 5));
+      try {
+        Map<String, dynamic> reply;
+        try {
+          reply = await run(allUsers: true);
+        } on Object catch (e) {
+          if (!isAllUsersRestricted(e)) rethrow;
+          reply = await run(allUsers: false);
+        }
         final ops = ((reply['cursor'] as Map?)?['firstBatch'] as List?) ?? [];
         final byNames = <String, IndexBuild>{};
         for (final op in ops.cast<Map<String, dynamic>>()) {

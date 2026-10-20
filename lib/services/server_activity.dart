@@ -136,13 +136,17 @@ class OperationInfo {
   }
 }
 
-/// The `$currentOp` aggregation the Operations tab runs.
-Map<String, dynamic> currentOpCommand({required bool includeIdle}) => {
+/// The `$currentOp` aggregation the Operations tab runs. [allUsers] asks for
+/// every user's operations; shared Atlas tiers only allow the user's own.
+Map<String, dynamic> currentOpCommand({
+  required bool includeIdle,
+  bool allUsers = true,
+}) => {
   'aggregate': 1,
   'pipeline': [
     {
       r'$currentOp': {
-        'allUsers': true,
+        'allUsers': allUsers,
         'idleConnections': includeIdle,
         'idleSessions': includeIdle,
       },
@@ -150,6 +154,21 @@ Map<String, dynamic> currentOpCommand({required bool includeIdle}) => {
   ],
   'cursor': {'batchSize': 1000},
 };
+
+/// Whether [error] says `$currentOp` may not list other users' operations,
+/// which is how Atlas shared and Flex tiers report it.
+bool isAllUsersRestricted(Object error) =>
+    error.toString().contains('allUsers');
+
+/// Whether [error] says the server or the user's role does not allow the
+/// command at all.
+bool isCommandRestricted(Object error) {
+  final text = error.toString();
+  return text.contains('CMD_NOT_ALLOWED') ||
+      text.contains('not authorized') ||
+      text.contains('Unauthorized') ||
+      text.contains('allowed in this atlas tier');
+}
 
 List<OperationInfo> operationsOf(
   Map<String, dynamic> reply, {

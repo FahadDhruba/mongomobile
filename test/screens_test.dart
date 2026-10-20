@@ -942,6 +942,84 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('server activity on a shared Atlas tier', (tester) async {
+    final data = sampleData();
+    data['local'] = {'startup_log': []};
+    final client = FakeMongoClient(data);
+    var tick = 0;
+    client.onCommand = (db, cmd) {
+      if (cmd.containsKey('serverStatus')) {
+        tick++;
+        return {
+          'opcounters': {'query': 100 + tick * 20},
+          'connections': {'current': 7, 'available': 800},
+          'network': {'bytesIn': tick * 2048, 'bytesOut': tick * 4096},
+          'mem': {'resident': 256},
+          'localTime': DateTime.utc(2026).add(Duration(seconds: tick * 2)),
+        };
+      }
+      if (cmd['aggregate'] == 1) {
+        final stage = (cmd['pipeline'] as List).first as Map;
+        if ((stage[r'$currentOp'] as Map)['allUsers'] == true) {
+          throw MongoServerError(
+            r"Error validating $currentOp value. arg=allUsers isn't allowed "
+            'in this atlas tier',
+            code: 8000,
+          );
+        }
+        return {
+          'cursor': {
+            'firstBatch': [
+              {
+                'opid': 4242,
+                'op': 'query',
+                'ns': 'shop.orders',
+                'client': '10.0.0.5:51234',
+                'appName': 'reporting',
+                'secs_running': 75,
+              },
+            ],
+          },
+        };
+      }
+      if (cmd['profile'] == -1) {
+        throw MongoServerError('CMD_NOT_ALLOWED: profile', code: 8000);
+      }
+      return null;
+    };
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Server activity'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Operations'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('only shows your own operations'),
+        findsOneWidget);
+    expect(find.text('1m 15s'), findsOneWidget);
+    expect(find.textContaining('reporting'), findsOneWidget);
+
+    await tester.tap(find.text('Slow queries'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose a database'));
+    await tester.pumpAndSettle();
+    expect(find.text('local'), findsNothing);
+    expect(find.text('admin'), findsNothing);
+    await tester.tap(find.text('shop').last);
+    await tester.pumpAndSettle();
+    expect(find.text("The profiler isn't available"), findsOneWidget);
+    expect(find.textContaining('CMD_NOT_ALLOWED'), findsNothing);
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('connection form', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore();

@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:mongo_wire/mongo_wire.dart';
 
+import 'server_activity.dart';
+
 /// One piece of shell output.
 sealed class ShellOutput {
   const ShellOutput();
@@ -260,16 +262,24 @@ JavaScript: there are no variables, functions or loops.''';
         await client.dropDatabase(database);
         return "{ ok: 1, dropped: '$database' }";
       case 'currentOp':
-        final r = await _command('admin', {
-          'aggregate': 1,
-          'pipeline': [
-            {
-              r'$currentOp': {'allUsers': true},
-            },
-            if (a.isNotEmpty) {r'$match': _doc(p, 0, 'a filter')},
-          ],
-          'cursor': {'batchSize': 1000},
-        });
+        Future<Map<String, dynamic>> currentOp(bool allUsers) =>
+            _command('admin', {
+              'aggregate': 1,
+              'pipeline': [
+                {
+                  r'$currentOp': {'allUsers': allUsers},
+                },
+                if (a.isNotEmpty) {r'$match': _doc(p, 0, 'a filter')},
+              ],
+              'cursor': {'batchSize': 1000},
+            });
+        Map<String, dynamic> r;
+        try {
+          r = await currentOp(true);
+        } on Object catch (e) {
+          if (!isAllUsersRestricted(e)) rethrow;
+          r = await currentOp(false);
+        }
         return formatShell({
           'inprog': (r['cursor'] as Map?)?['firstBatch'] ?? const [],
         });

@@ -40,6 +40,9 @@ class _ServerActivityScreenState extends ConsumerState<ServerActivityScreen> {
   bool _includeSystem = false;
   bool _opsLoaded = false;
 
+  /// The server refused `allUsers`, so only the user's own operations show.
+  bool _ownOnly = false;
+
   @override
   void initState() {
     super.initState();
@@ -92,15 +95,24 @@ class _ServerActivityScreenState extends ConsumerState<ServerActivityScreen> {
     }
   }
 
+  Future<Map<String, dynamic>> _currentOp({required bool allUsers}) => ref
+      .read(clientProvider)
+      .runCommand(
+        'admin',
+        currentOpCommand(includeIdle: _includeSystem, allUsers: allUsers),
+        maxTime: const Duration(seconds: 5),
+      );
+
   Future<void> _loadOps() async {
     try {
-      final reply = await ref
-          .read(clientProvider)
-          .runCommand(
-            'admin',
-            currentOpCommand(includeIdle: _includeSystem),
-            maxTime: const Duration(seconds: 5),
-          );
+      Map<String, dynamic> reply;
+      try {
+        reply = await _currentOp(allUsers: !_ownOnly);
+      } on Object catch (e) {
+        if (_ownOnly || !isAllUsersRestricted(e)) rethrow;
+        _ownOnly = true;
+        reply = await _currentOp(allUsers: false);
+      }
       if (!mounted) return;
       setState(() {
         _ops = operationsOf(reply, includeSystem: _includeSystem);
@@ -284,6 +296,15 @@ class _ServerActivityScreenState extends ConsumerState<ServerActivityScreen> {
             ],
           ),
         ),
+        if (_ownOnly)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+            child: Text(
+              'This server only shows your own operations (Atlas shared and '
+              "Flex tiers don't allow seeing other users').",
+              style: TextStyle(color: c.muted, fontSize: 12),
+            ),
+          ),
         Expanded(
           child: _opsError != null
               ? ListView(
@@ -539,6 +560,7 @@ class _SlowQueriesState extends ConsumerState<_SlowQueries>
   int? _slowMs;
   List<ProfileEntry>? _entries;
   String? _error;
+  bool _restricted = false;
   bool _loading = false;
 
   @override
@@ -550,6 +572,7 @@ class _SlowQueriesState extends ConsumerState<_SlowQueries>
     setState(() {
       _loading = true;
       _error = null;
+      _restricted = false;
     });
     final client = ref.read(clientProvider);
     try {
@@ -573,7 +596,11 @@ class _SlowQueriesState extends ConsumerState<_SlowQueries>
     } on Object catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = describeError(e);
+        if (isCommandRestricted(e)) {
+          _restricted = true;
+        } else {
+          _error = describeError(e);
+        }
         _loading = false;
       });
     }
@@ -614,7 +641,10 @@ class _SlowQueriesState extends ConsumerState<_SlowQueries>
   Widget build(BuildContext context) {
     super.build(context);
     final c = context.colors;
-    final dbs = ref.watch(databasesProvider).value ?? const [];
+    final dbs = [
+      for (final d in ref.watch(databasesProvider).value ?? const [])
+        if (!const {'admin', 'local', 'config'}.contains(d.name)) d,
+    ];
     final entries = _entries;
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -669,7 +699,18 @@ class _SlowQueriesState extends ConsumerState<_SlowQueries>
             ],
           ),
         ],
-        if (_db == null)
+        if (_restricted)
+          const EmptyState(
+            icon: Icons.speed,
+            title: "The profiler isn't available",
+            message:
+                "This server doesn't let this user read or change the "
+                'database profiler. Atlas shared and Flex tiers don\'t allow '
+                'it; on a dedicated cluster it needs a user with the dbAdmin '
+                'role. In Atlas, the Query Profiler and Performance Advisor in '
+                'the Atlas web UI show slow queries.',
+          )
+        else if (_db == null)
           const EmptyState(
             icon: Icons.speed,
             title: 'Slow queries',
