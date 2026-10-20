@@ -118,6 +118,8 @@ class FakeMongoClient implements MongoClient {
     int skip = 0,
     int? limit,
     Duration? maxTime,
+    Map<String, dynamic>? collation,
+    Object? hint,
     CancelToken? cancel,
   }) async {
     var n = _coll(ns).where((d) => matches(d, filter)).length - skip;
@@ -163,7 +165,16 @@ class FakeMongoClient implements MongoClient {
   Future<List<CollectionInfo>> listCollections(
     String db, {
     CancelToken? cancel,
-  }) async => [for (final c in (data[db] ?? {}).keys) CollectionInfo(c)];
+  }) async => [
+    for (final c in (data[db] ?? {}).keys)
+      CollectionInfo(
+        c,
+        type: collectionOptions[Namespace(db, c)]?['viewOn'] != null
+            ? 'view'
+            : 'collection',
+        options: collectionOptions[Namespace(db, c)] ?? const {},
+      ),
+  ];
 
   @override
   Future<CollectionStats?> collectionStats(
@@ -214,6 +225,222 @@ class FakeMongoClient implements MongoClient {
   Future<void> dropIndex(Namespace ns, String name) async {
     indexes[ns]?.removeWhere((i) => i['name'] == name);
   }
+
+  final List<List<Map<String, dynamic>>> pipelines = [];
+  final List<Map<String, dynamic>> explained = [];
+  final List<(String, Map<String, dynamic>)> commands = [];
+
+  /// Runs the few stages the tests need: $match, $sort, $skip, $limit,
+  /// $project (inclusion of plain fields) and $count.
+  @override
+  Future<FindResult> aggregate(
+    Namespace ns,
+    List<Map<String, dynamic>> pipeline, {
+    required int limit,
+    Duration? maxTime,
+    int maxBytes = 4 * 1024 * 1024,
+    Map<String, dynamic>? collation,
+    Object? hint,
+    CancelToken? cancel,
+  }) async {
+    pipelines.add(pipeline);
+    var docs = [for (final d in _coll(ns)) {...d}];
+    for (final stage in pipeline) {
+      final op = stage.keys.single;
+      final arg = stage[op];
+      switch (op) {
+        case r'$match':
+          docs = docs.where((d) => matches(d, arg as Map<String, dynamic>)).toList();
+        case r'$sort':
+          final m = arg as Map<String, dynamic>;
+          final field = m.keys.single;
+          final dir = (m.values.single as num).toInt();
+          docs.sort((a, b) => dir * _cmp(a[field], b[field]));
+        case r'$skip':
+          docs = docs.skip(arg as int).toList();
+        case r'$limit':
+          docs = docs.take(arg as int).toList();
+        case r'$project':
+          final keep = (arg as Map<String, dynamic>).keys.toSet()..add('_id');
+          docs = [
+            for (final d in docs)
+              {for (final e in d.entries) if (keep.contains(e.key)) e.key: e.value},
+          ];
+        case r'$count':
+          docs = [
+            {arg as String: docs.length},
+          ];
+        case r'$out' || r'$merge':
+          docs = [];
+        default:
+          throw UnsupportedError('Fake aggregate does not support $op');
+      }
+    }
+    return FindResult(
+      docs.take(limit).toList(),
+      byteLength: 100 * docs.length,
+      truncated: false,
+      elapsed: const Duration(milliseconds: 4),
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> explain(
+    String db,
+    Map<String, dynamic> command, {
+    String verbosity = 'executionStats',
+    Duration? maxTime,
+    CancelToken? cancel,
+  }) async {
+    explained.add(command);
+    return {
+      'queryPlanner': {
+        'namespace': '$db.${command['find'] ?? command['aggregate']}',
+        'winningPlan': {
+          'stage': 'FETCH',
+          'inputStage': {
+            'stage': 'IXSCAN',
+            'indexName': 'paid_1',
+            'keyPattern': {'paid': 1},
+          },
+        },
+        'rejectedPlans': [],
+      },
+      'executionStats': {
+        'nReturned': 20,
+        'executionTimeMillis': 3,
+        'totalKeysExamined': 20,
+        'totalDocsExamined': 20,
+        'executionStages': {
+          'stage': 'FETCH',
+          'nReturned': 20,
+          'executionTimeMillisEstimate': 1,
+          'docsExamined': 20,
+          'inputStage': {
+            'stage': 'IXSCAN',
+            'nReturned': 20,
+            'indexName': 'paid_1',
+            'keysExamined': 20,
+            'executionTimeMillisEstimate': 0,
+          },
+        },
+      },
+      'ok': 1,
+    };
+  }
+
+  Map<String, dynamic> _applySet(Map<String, dynamic> d, Object update) {
+    if (update is Map && update[r'$set'] is Map) {
+      final out = {...d};
+      (update[r'$set'] as Map).forEach((k, v) => out['$k'] = v);
+      return out;
+    }
+    throw UnsupportedError('Fake updates only support \$set');
+  }
+
+  @override
+  Future<UpdateResult> updateOne(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  ) async {
+    final list = _coll(ns);
+    final i = list.indexWhere((d) => matches(d, filter));
+    if (i < 0) return const UpdateResult(0, 0);
+    list[i] = _applySet(list[i], update);
+    return const UpdateResult(1, 1);
+  }
+
+  @override
+  Future<UpdateResult> updateMany(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  ) async {
+    final list = _coll(ns);
+    var n = 0;
+    for (var i = 0; i < list.length; i++) {
+      if (matches(list[i], filter)) {
+        list[i] = _applySet(list[i], update);
+        n++;
+      }
+    }
+    return UpdateResult(n, n);
+  }
+
+  @override
+  Future<int> deleteMany(Namespace ns, Map<String, dynamic> filter) async {
+    final list = _coll(ns);
+    final before = list.length;
+    list.removeWhere((d) => matches(d, filter));
+    return before - list.length;
+  }
+
+  @override
+  Future<InsertManyResult> insertMany(
+    Namespace ns,
+    List<Map<String, dynamic>> documents, {
+    bool ordered = false,
+  }) async {
+    final list = _writable(ns);
+    final errors = <WriteErrorInfo>[];
+    var n = 0;
+    for (var i = 0; i < documents.length; i++) {
+      final doc = {'_id': ObjectId(), ...documents[i]};
+      if (list.any((d) => _cmp(d['_id'], doc['_id']) == 0)) {
+        errors.add(WriteErrorInfo(i, 11000, 'E11000 duplicate key'));
+        if (ordered) break;
+        continue;
+      }
+      list.add(doc);
+      n++;
+    }
+    return InsertManyResult(n, errors);
+  }
+
+  final Map<Namespace, Map<String, dynamic>> collectionOptions = {};
+
+  @override
+  Future<void> createCollection(
+    Namespace ns, [
+    Map<String, dynamic> options = const {},
+  ]) async {
+    _writable(ns);
+    collectionOptions[ns] = options;
+  }
+
+  @override
+  Future<void> dropDatabase(String db) async {
+    data.remove(db);
+  }
+
+  @override
+  Future<void> renameCollection(Namespace ns, String newName) async {
+    final docs = data[ns.db]?.remove(ns.collection);
+    if (docs != null) data[ns.db]![newName] = docs;
+  }
+
+  final List<(Namespace, Map<String, dynamic>)> collMods = [];
+
+  @override
+  Future<void> modifyCollection(
+    Namespace ns,
+    Map<String, dynamic> options,
+  ) async {
+    collMods.add((ns, options));
+    collectionOptions[ns] = {...?collectionOptions[ns], ...options};
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> indexStats(
+    Namespace ns, {
+    CancelToken? cancel,
+  }) async => [
+    {
+      'name': '_id_',
+      'accesses': {'ops': BsonLong(42), 'since': DateTime.utc(2024)},
+    },
+  ];
 
   @override
   Future<void> dropCollection(Namespace ns) async {

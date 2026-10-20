@@ -98,6 +98,7 @@ final class FindRequest {
     this.maxTime,
     this.maxBytes = 4 * 1024 * 1024,
     this.hint,
+    this.collation,
   });
 
   final Map<String, dynamic> filter;
@@ -116,6 +117,7 @@ final class FindRequest {
   /// first batch.
   final int maxBytes;
   final Object? hint;
+  final Map<String, dynamic>? collation;
 }
 
 final class FindResult {
@@ -133,6 +135,24 @@ final class FindResult {
   /// [FindRequest.maxBytes] was reached.
   final bool truncated;
   final Duration elapsed;
+}
+
+/// One document an insertMany could not write.
+final class WriteErrorInfo {
+  const WriteErrorInfo(this.index, this.code, this.message);
+
+  /// Position in the documents passed to insertMany.
+  final int index;
+  final int? code;
+  final String message;
+
+  bool get isDuplicateKey => code == 11000;
+}
+
+final class InsertManyResult {
+  const InsertManyResult(this.inserted, this.errors);
+  final int inserted;
+  final List<WriteErrorInfo> errors;
 }
 
 final class UpdateResult {
@@ -205,6 +225,8 @@ abstract interface class MongoClient {
     int skip = 0,
     int? limit,
     Duration? maxTime,
+    Map<String, dynamic>? collation,
+    Object? hint,
     CancelToken? cancel,
   });
 
@@ -234,6 +256,78 @@ abstract interface class MongoClient {
   ]);
 
   Future<void> dropIndex(Namespace ns, String name);
+
+  /// Runs an aggregation and returns up to [limit] result documents, with
+  /// the same soft byte cap as [find]. Pipelines ending in `$out` or
+  /// `$merge` write their output and return no documents.
+  Future<FindResult> aggregate(
+    Namespace ns,
+    List<Map<String, dynamic>> pipeline, {
+    required int limit,
+    Duration? maxTime,
+    int maxBytes = 4 * 1024 * 1024,
+    Map<String, dynamic>? collation,
+    Object? hint,
+    CancelToken? cancel,
+  });
+
+  /// Explains [command] (a find or aggregate command document) at
+  /// [verbosity]: `queryPlanner`, `executionStats` or `allPlansExecution`.
+  Future<Map<String, dynamic>> explain(
+    String db,
+    Map<String, dynamic> command, {
+    String verbosity = 'executionStats',
+    Duration? maxTime,
+    CancelToken? cancel,
+  });
+
+  /// [update] is an update document (`{$set: ...}`) or a pipeline array.
+  Future<UpdateResult> updateOne(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  );
+
+  Future<UpdateResult> updateMany(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  );
+
+  /// Returns the number of deleted documents.
+  Future<int> deleteMany(Namespace ns, Map<String, dynamic> filter);
+
+  /// Inserts [documents] in as few requests as fit. With [ordered] false,
+  /// documents that fail (duplicate keys, validation) are reported and the
+  /// rest are still inserted.
+  Future<InsertManyResult> insertMany(
+    Namespace ns,
+    List<Map<String, dynamic>> documents, {
+    bool ordered = false,
+  });
+
+  /// Creates a collection or a view; [options] are those of the `create`
+  /// command (capped, timeseries, clusteredIndex, collation, viewOn,
+  /// pipeline, validator, ...).
+  Future<void> createCollection(
+    Namespace ns, [
+    Map<String, dynamic> options = const {},
+  ]);
+
+  Future<void> dropDatabase(String db);
+
+  /// Renames within the same database. Fails if [newName] exists.
+  Future<void> renameCollection(Namespace ns, String newName);
+
+  /// Runs `collMod` with [options], e.g. a validator, a view pipeline or
+  /// `{index: {name: ..., hidden: true}}`.
+  Future<void> modifyCollection(Namespace ns, Map<String, dynamic> options);
+
+  /// `$indexStats`: per-index usage since the server started.
+  Future<List<Map<String, dynamic>>> indexStats(
+    Namespace ns, {
+    CancelToken? cancel,
+  });
 
   /// Drops the collection. Dropping one that doesn't exist is not an error.
   Future<void> dropCollection(Namespace ns);

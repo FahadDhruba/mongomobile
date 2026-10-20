@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'bson/codec.dart';
 import 'bson/types.dart';
 import 'cancel.dart';
 import 'client.dart';
@@ -445,64 +446,148 @@ class WireMongoClient implements MongoClient {
             if (r.skip > 0) 'skip': r.skip,
             'limit': r.limit,
             'batchSize': firstBatch,
-            if (r.hint != null) 'hint': r.hint,
+            'hint': ?r.hint,
+            'collation': ?r.collation,
           },
           maxTime: r.maxTime,
           tag: tag,
         );
-        var reply = await c.send(ns.db, cmd, cancel: cancel, timeout: timeout);
-        final docs = [..._firstBatch(reply.document)];
-        var bytes = reply.byteLength;
-        var id = _cursorId(reply.document);
-        var truncated = false;
-        while (id != 0 && docs.length < r.limit) {
-          if (bytes >= r.maxBytes) {
-            truncated = true;
-            break;
-          }
-          final remaining = r.limit - docs.length;
-          final average = docs.isEmpty ? 1024 : max(1, bytes ~/ docs.length);
-          final batch = ((r.maxBytes - bytes) ~/ average).clamp(1, remaining);
-          // No maxTimeMS here: servers only accept it on getMore for
-          // tailable awaitData cursors. The time limit set on find already
-          // covers the cursor's later batches.
-          reply = await c.send(
-            ns.db,
-            {
-              'getMore': BsonLong(id),
-              'collection': ns.collection,
-              'batchSize': batch,
-            },
-            cancel: cancel,
-            timeout: timeout,
-          );
-          final cursor = reply.document['cursor'] as Map<String, dynamic>;
-          docs.addAll(
-            (cursor['nextBatch'] as List).cast<Map<String, dynamic>>(),
-          );
-          bytes += reply.byteLength;
-          id = _cursorId(reply.document);
-        }
-        if (id != 0) {
-          unawaited(
-            c
-                .send(ns.db, {
-                  'killCursors': ns.collection,
-                  'cursors': [BsonLong(id)],
-                }, timeout: const Duration(seconds: 5))
-                .then((_) {}, onError: (_) {}),
-          );
-        }
-        if (docs.length > r.limit) docs.removeRange(r.limit, docs.length);
-        return FindResult(
-          docs,
-          byteLength: bytes,
-          truncated: truncated,
-          elapsed: sw.elapsed,
+        final reply = await c.send(
+          ns.db,
+          cmd,
+          cancel: cancel,
+          timeout: timeout,
         );
+        return _collect(c, ns, reply, r.limit, r.maxBytes, cancel, timeout, sw);
       },
       cancel: cancel,
       tag: tag,
+    );
+  }
+
+  /// Reads a cursor's batches into one result: up to [limit] documents,
+  /// stopping early once [maxBytes] have arrived, and killing the cursor
+  /// when documents are left over.
+  Future<FindResult> _collect(
+    WireConnection c,
+    Namespace ns,
+    WireReply first,
+    int limit,
+    int maxBytes,
+    CancelToken? cancel,
+    Duration timeout,
+    Stopwatch sw,
+  ) async {
+    var reply = first;
+    final docs = [..._firstBatch(reply.document)];
+    var bytes = reply.byteLength;
+    var id = _cursorId(reply.document);
+    var truncated = false;
+    while (id != 0 && docs.length < limit) {
+      if (bytes >= maxBytes) {
+        truncated = true;
+        break;
+      }
+      final remaining = limit - docs.length;
+      final average = docs.isEmpty ? 1024 : max(1, bytes ~/ docs.length);
+      final batch = ((maxBytes - bytes) ~/ average).clamp(1, remaining);
+      // No maxTimeMS here: servers only accept it on getMore for tailable
+      // awaitData cursors. The time limit on the first command already
+      // covers the cursor's later batches.
+      reply = await c.send(
+        ns.db,
+        {
+          'getMore': BsonLong(id),
+          'collection': ns.collection,
+          'batchSize': batch,
+        },
+        cancel: cancel,
+        timeout: timeout,
+      );
+      final cursor = reply.document['cursor'] as Map<String, dynamic>;
+      docs.addAll((cursor['nextBatch'] as List).cast<Map<String, dynamic>>());
+      bytes += reply.byteLength;
+      id = _cursorId(reply.document);
+    }
+    if (id != 0) {
+      unawaited(
+        c
+            .send(ns.db, {
+              'killCursors': ns.collection,
+              'cursors': [BsonLong(id)],
+            }, timeout: const Duration(seconds: 5))
+            .then((_) {}, onError: (_) {}),
+      );
+    }
+    if (docs.length > limit) docs.removeRange(limit, docs.length);
+    return FindResult(
+      docs,
+      byteLength: bytes,
+      truncated: truncated,
+      elapsed: sw.elapsed,
+    );
+  }
+
+  @override
+  Future<FindResult> aggregate(
+    Namespace ns,
+    List<Map<String, dynamic>> pipeline, {
+    required int limit,
+    Duration? maxTime,
+    int maxBytes = 4 * 1024 * 1024,
+    Map<String, dynamic>? collation,
+    Object? hint,
+    CancelToken? cancel,
+  }) {
+    if (limit <= 0) throw ArgumentError.value(limit, 'limit');
+    final tag = cancel != null && _supportsComment ? _newTag() : null;
+    final timeout = _localTimeout(maxTime);
+    final writes =
+        pipeline.isNotEmpty &&
+        (pipeline.last.containsKey(r'$out') ||
+            pipeline.last.containsKey(r'$merge'));
+    return _withConnection(
+      (c) async {
+        final sw = Stopwatch()..start();
+        final reply = await c.send(
+          ns.db,
+          _withCommon(
+            {
+              'aggregate': ns.collection,
+              'pipeline': pipeline,
+              'cursor': {'batchSize': writes ? 0 : min(limit, 25)},
+              'collation': ?collation,
+              'hint': ?hint,
+            },
+            maxTime: maxTime,
+            tag: tag,
+          ),
+          cancel: cancel,
+          timeout: timeout,
+        );
+        return _collect(c, ns, reply, limit, maxBytes, cancel, timeout, sw);
+      },
+      cancel: cancel,
+      // $out and $merge write, so they must not run twice.
+      retryable: !writes,
+      tag: tag,
+    );
+  }
+
+  @override
+  Future<Map<String, dynamic>> explain(
+    String db,
+    Map<String, dynamic> command, {
+    String verbosity = 'executionStats',
+    Duration? maxTime,
+    CancelToken? cancel,
+  }) {
+    // maxTimeMS goes on the explain itself, not the wrapped command.
+    return _read(
+      db,
+      {'explain': command, 'verbosity': verbosity},
+      maxTime: maxTime,
+      cancel: cancel,
     );
   }
 
@@ -528,12 +613,16 @@ class WireMongoClient implements MongoClient {
     int skip = 0,
     int? limit,
     Duration? maxTime,
+    Map<String, dynamic>? collation,
+    Object? hint,
     CancelToken? cancel,
   }) async {
     final reply = await _read(
       ns.db,
       {
         'aggregate': ns.collection,
+        'collation': ?collation,
+        'hint': ?hint,
         'pipeline': [
           {r'$match': filter},
           if (skip > 0) {r'$skip': skip},
@@ -607,6 +696,148 @@ class WireMongoClient implements MongoClient {
       ],
     });
     return UpdateResult(_toInt(reply['n']), _toInt(reply['nModified']));
+  }
+
+  Future<UpdateResult> _update(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+    bool multi,
+  ) async {
+    if (update is! Map && update is! List) {
+      throw ArgumentError('An update is a document or a pipeline array');
+    }
+    final reply = await _write(ns.db, {
+      'update': ns.collection,
+      'updates': [
+        {'q': filter, 'u': update, 'upsert': false, 'multi': multi},
+      ],
+    });
+    return UpdateResult(_toInt(reply['n']), _toInt(reply['nModified']));
+  }
+
+  @override
+  Future<UpdateResult> updateOne(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  ) => _update(ns, filter, update, false);
+
+  @override
+  Future<UpdateResult> updateMany(
+    Namespace ns,
+    Map<String, dynamic> filter,
+    Object update,
+  ) => _update(ns, filter, update, true);
+
+  @override
+  Future<int> deleteMany(Namespace ns, Map<String, dynamic> filter) async {
+    final reply = await _write(ns.db, {
+      'delete': ns.collection,
+      'deletes': [
+        {'q': filter, 'limit': 0},
+      ],
+    });
+    return _toInt(reply['n']);
+  }
+
+  /// Requests stay well under the server's 48 MB message limit.
+  static const _insertBatchBytes = 8 * 1024 * 1024;
+
+  @override
+  Future<InsertManyResult> insertMany(
+    Namespace ns,
+    List<Map<String, dynamic>> documents, {
+    bool ordered = false,
+  }) async {
+    var inserted = 0;
+    final errors = <WriteErrorInfo>[];
+    var start = 0;
+    while (start < documents.length) {
+      // Split by encoded size so huge imports never exceed message limits.
+      final batch = <Map<String, dynamic>>[];
+      var bytes = 0;
+      var i = start;
+      while (i < documents.length && batch.length < 10000) {
+        final size = Bson.sizeOf(documents[i]);
+        if (batch.isNotEmpty && bytes + size > _insertBatchBytes) break;
+        batch.add(documents[i]);
+        bytes += size;
+        i++;
+      }
+      final reply = await _withConnection(
+        (c) async => (await c.send(ns.db, {
+          'insert': ns.collection,
+          'documents': batch,
+          'ordered': ordered,
+        }, timeout: _localTimeout(null))).document,
+        retryable: false,
+      );
+      inserted += _toInt(reply['n']);
+      final writeErrors = reply['writeErrors'];
+      if (writeErrors is List) {
+        for (final e in writeErrors.cast<Map<String, dynamic>>()) {
+          errors.add(
+            WriteErrorInfo(
+              start + _toInt(e['index']),
+              e['code'] is int ? e['code'] as int : null,
+              '${e['errmsg'] ?? 'Write failed'}',
+            ),
+          );
+        }
+      }
+      final wce = reply['writeConcernError'];
+      if (wce is Map) {
+        throw MongoWriteError('Write concern error: ${wce['errmsg']}');
+      }
+      if (ordered && errors.isNotEmpty) break;
+      start = i;
+    }
+    return InsertManyResult(inserted, errors);
+  }
+
+  @override
+  Future<void> createCollection(
+    Namespace ns, [
+    Map<String, dynamic> options = const {},
+  ]) async {
+    await _write(ns.db, {'create': ns.collection, ...options});
+  }
+
+  @override
+  Future<void> dropDatabase(String db) async {
+    await _write(db, {'dropDatabase': 1});
+  }
+
+  @override
+  Future<void> renameCollection(Namespace ns, String newName) async {
+    await _write('admin', {
+      'renameCollection': '$ns',
+      'to': '${ns.db}.$newName',
+      'dropTarget': false,
+    });
+  }
+
+  @override
+  Future<void> modifyCollection(
+    Namespace ns,
+    Map<String, dynamic> options,
+  ) async {
+    await _write(ns.db, {'collMod': ns.collection, ...options});
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> indexStats(
+    Namespace ns, {
+    CancelToken? cancel,
+  }) {
+    return _readCursor(ns.db, ns.collection, {
+      'aggregate': ns.collection,
+      'pipeline': [
+        {r'$indexStats': <String, dynamic>{}},
+      ],
+      'cursor': <String, dynamic>{},
+    }, cancel: cancel);
   }
 
   @override
@@ -713,8 +944,7 @@ class WireMongoClient implements MongoClient {
         },
         cancel: cancel,
         timeout: timeout,
-      ))
-          .document;
+      )).document;
       id = _cursorId(reply);
       final first = _firstBatch(reply);
       if (first.isNotEmpty) yield first;
@@ -729,8 +959,7 @@ class WireMongoClient implements MongoClient {
           },
           cancel: cancel,
           timeout: timeout,
-        ))
-            .document;
+        )).document;
         id = _cursorId(reply);
         final batch = ((reply['cursor'] as Map)['nextBatch'] as List)
             .cast<Map<String, dynamic>>();
@@ -740,12 +969,14 @@ class WireMongoClient implements MongoClient {
       if (id != 0 && !conn.isClosed) {
         // Stopped early (cancelled, or the listener went away): free the
         // server-side cursor.
-        unawaited(conn
-            .send(ns.db, {
-              'killCursors': ns.collection,
-              'cursors': [BsonLong(id)],
-            }, timeout: const Duration(seconds: 5))
-            .then((_) {}, onError: (_) {}));
+        unawaited(
+          conn
+              .send(ns.db, {
+                'killCursors': ns.collection,
+                'cursors': [BsonLong(id)],
+              }, timeout: const Duration(seconds: 5))
+              .then((_) {}, onError: (_) {}),
+        );
       }
       _pool.release(conn);
     }

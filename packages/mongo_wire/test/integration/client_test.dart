@@ -211,6 +211,254 @@ void main() {
     });
   });
 
+  group('aggregation and explain', () {
+    final coll = ns('agg');
+
+    setUpAll(() async {
+      final docs = [
+        for (var i = 0; i < 60; i++) {'_id': i, 'g': i % 3, 'name': 'n$i'},
+      ];
+      final r = await client.insertMany(coll, docs);
+      expect(r.inserted, 60);
+    });
+
+    test('runs a pipeline and pages its output', () async {
+      final r = await client.aggregate(coll, [
+        {
+          r'$group': {
+            '_id': r'$g',
+            'n': {r'$sum': 1},
+          },
+        },
+        {
+          r'$sort': {'_id': 1},
+        },
+      ], limit: 10);
+      expect(r.documents, [
+        {'_id': 0, 'n': 20},
+        {'_id': 1, 'n': 20},
+        {'_id': 2, 'n': 20},
+      ]);
+      final many = await client.aggregate(
+        coll,
+        [
+          {r'$match': <String, dynamic>{}},
+        ],
+        limit: 55,
+        maxTime: const Duration(seconds: 10),
+      );
+      expect(many.documents, hasLength(55));
+    });
+
+    test(r'$out writes and returns nothing', () async {
+      final r = await client.aggregate(coll, [
+        {
+          r'$match': {'g': 0},
+        },
+        {r'$out': 'agg_out'},
+      ], limit: 10);
+      expect(r.documents, isEmpty);
+      expect(await client.estimatedDocumentCount(ns('agg_out')), 20);
+    });
+
+    test('explains a find with execution stats', () async {
+      final plan = await client.explain(dbName, {
+        'find': 'agg',
+        'filter': {'g': 1},
+      });
+      final stats = plan['executionStats'] as Map<String, dynamic>;
+      expect(stats['nReturned'], 20);
+      expect(stats['totalDocsExamined'], 60);
+      expect(plan['queryPlanner'], isA<Map<String, dynamic>>());
+    });
+
+    test('counts with collation and hint', () async {
+      final n = await client.countDocuments(
+        coll,
+        {'name': 'N1'},
+        collation: {'locale': 'en', 'strength': 2},
+        hint: {'_id': 1},
+      );
+      expect(n, 1);
+      final found = await client.find(
+        coll,
+        const FindRequest(
+          filter: {'name': 'N2'},
+          collation: {'locale': 'en', 'strength': 2},
+          limit: 5,
+        ),
+      );
+      expect(found.documents.single['_id'], 2);
+    });
+  });
+
+  group('bulk writes', () {
+    final coll = ns('bulk');
+
+    test('insertMany reports failures and keeps going', () async {
+      final r = await client.insertMany(coll, [
+        {'_id': 1},
+        {'_id': 1},
+        {'_id': 2},
+      ]);
+      expect(r.inserted, 2);
+      expect(r.errors.single.index, 1);
+      expect(r.errors.single.isDuplicateKey, isTrue);
+    });
+
+    test('updateOne, updateMany with a pipeline, deleteMany', () async {
+      await client.insertMany(coll, [
+        for (var i = 10; i < 20; i++) {'_id': i, 'v': i},
+      ]);
+      final one = await client.updateOne(
+        coll,
+        {'_id': 10},
+        {
+          r'$set': {'flag': true},
+        },
+      );
+      expect(one.modified, 1);
+      final many = await client.updateMany(
+        coll,
+        {
+          'v': {r'$gte': 15},
+        },
+        [
+          {
+            r'$set': {
+              'double': {
+                r'$multiply': [r'$v', 2],
+              },
+            },
+          },
+        ],
+      );
+      expect(many.matched, 5);
+      final doc = (await client.find(
+        coll,
+        const FindRequest(filter: {'_id': 19}, limit: 1),
+      )).documents.single;
+      expect(doc['double'], 38);
+      expect(
+        await client.deleteMany(coll, {
+          'v': {r'$lt': 15},
+        }),
+        5,
+      );
+    });
+
+    test('insertMany splits very large inputs', () async {
+      final big = 'x' * 100000;
+      final r = await client.insertMany(ns('bulk_big'), [
+        for (var i = 0; i < 200; i++) {'_id': i, 'big': big},
+      ]);
+      expect(r.inserted, 200);
+    });
+  });
+
+  group('collections and databases', () {
+    test('creates capped, time series and view collections', () async {
+      await client.createCollection(ns('capped'), {
+        'capped': true,
+        'size': 4096,
+        'max': 10,
+      });
+      await client.createCollection(ns('ts'), {
+        'timeseries': {
+          'timeField': 't',
+          'metaField': 'm',
+          'granularity': 'hours',
+        },
+      });
+      await client.insertOne(ns('src'), {'a': 1, 'b': 2});
+      await client.createCollection(ns('v'), {
+        'viewOn': 'src',
+        'pipeline': [
+          {
+            r'$project': {'a': 1},
+          },
+        ],
+      });
+      final infos = {
+        for (final c in await client.listCollections(dbName)) c.name: c,
+      };
+      expect(infos['capped']!.options['capped'], isTrue);
+      expect(infos['ts']!.type, 'timeseries');
+      expect(infos['v']!.isView, isTrue);
+      final view = await client.find(ns('v'), const FindRequest(limit: 5));
+      expect(view.documents.single.containsKey('b'), isFalse);
+
+      // Edit the view's pipeline with collMod.
+      await client.modifyCollection(ns('v'), {
+        'viewOn': 'src',
+        'pipeline': [
+          {
+            r'$project': {'b': 1},
+          },
+        ],
+      });
+      final edited = await client.find(ns('v'), const FindRequest(limit: 5));
+      expect(edited.documents.single.containsKey('b'), isTrue);
+    });
+
+    test('sets a validator with collMod and enforces it', () async {
+      await client.createCollection(ns('valid'));
+      await client.modifyCollection(ns('valid'), {
+        'validator': {
+          r'$jsonSchema': {
+            'required': ['name'],
+          },
+        },
+        'validationLevel': 'strict',
+        'validationAction': 'error',
+      });
+      await expectLater(
+        client.insertOne(ns('valid'), {'x': 1}),
+        throwsA(isA<MongoWriteError>()),
+      );
+      await client.insertOne(ns('valid'), {'name': 'ok'});
+      final info = (await client.listCollections(
+        dbName,
+      )).firstWhere((c) => c.name == 'valid');
+      expect(info.options['validator'], isNotNull);
+    });
+
+    test('hides an index and reads index stats', () async {
+      await client.insertOne(ns('hide'), {'a': 1});
+      await client.createIndex(ns('hide'), {'a': 1});
+      await client.modifyCollection(ns('hide'), {
+        'index': {'name': 'a_1', 'hidden': true},
+      });
+      final idx = await client.listIndexes(ns('hide'));
+      expect(idx.firstWhere((i) => i['name'] == 'a_1')['hidden'], isTrue);
+      final stats = await client.indexStats(ns('hide'));
+      expect(stats.map((s) => s['name']), containsAll(['_id_', 'a_1']));
+      expect(stats.first['accesses'], isA<Map<String, dynamic>>());
+    });
+
+    test('renames a collection', () async {
+      await client.insertOne(ns('old_name'), {'a': 1});
+      await client.renameCollection(ns('old_name'), 'new_name');
+      final names = (await client.listCollections(dbName)).map((c) => c.name);
+      expect(names, contains('new_name'));
+      expect(names, isNot(contains('old_name')));
+    });
+
+    test('drops a database', () async {
+      final other = '${dbName}_drop';
+      await client.insertOne(Namespace(other, 'c'), {'a': 1});
+      expect(
+        (await client.listDatabases()).map((d) => d.name),
+        contains(other),
+      );
+      await client.dropDatabase(other);
+      expect(
+        (await client.listDatabases()).map((d) => d.name),
+        isNot(contains(other)),
+      );
+    });
+  });
+
   test('drops a collection, and dropping again is fine', () async {
     final coll = ns('to_drop');
     await client.insertOne(coll, {'a': 1});
