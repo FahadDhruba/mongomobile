@@ -8,6 +8,7 @@ import 'package:mongo_wire/mongo_wire.dart';
 
 import '../../state/documents_controller.dart';
 import 'collection_screen.dart';
+import 'edit_view_screen.dart';
 import 'export_sheet.dart';
 import 'explorer_drawer.dart';
 import 'overview_screens.dart';
@@ -55,6 +56,40 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
       if (!ok) return;
     }
     ref.read(sessionProvider.notifier).setReadOnly(!readOnly);
+  }
+
+  CollectionInfo? _infoOf(Namespace ns) => ref
+      .read(collectionsProvider(ns.db))
+      .value
+      ?.where((c) => c.name == ns.collection)
+      .firstOrNull;
+
+  bool _isView(Namespace ns) => _infoOf(ns)?.isView ?? false;
+
+  Future<void> _editView(Namespace view) async {
+    final info = _infoOf(view);
+    final source = info?.options['viewOn'];
+    if (info == null || source is! String) return;
+    final pipeline = (info.options['pipeline'] as List? ?? const [])
+        .cast<Map<String, dynamic>>();
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => EditViewScreen(
+          view: view,
+          source: Namespace(view.db, source),
+          pipeline: pipeline,
+        ),
+      ),
+    );
+    if (updated == true && mounted) {
+      ref.invalidate(documentsProvider(view));
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(content: Text('View ${view.collection} updated')),
+        );
+    }
   }
 
   Future<void> _dropCollection(Namespace ns) async {
@@ -163,6 +198,8 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                     );
                   case 'drop':
                     _dropCollection(ns!);
+                  case 'editView':
+                    _editView(ns!);
                   case 'settings':
                     Navigator.push(
                       context,
@@ -174,6 +211,11 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
               },
               itemBuilder: (_) => [
                 if (ns != null) ...[
+                  if (_isView(ns))
+                    const PopupMenuItem(
+                      value: 'editView',
+                      child: Text('Edit view pipeline…'),
+                    ),
                   const PopupMenuItem(
                     value: 'export',
                     child: Text('Export collection…'),

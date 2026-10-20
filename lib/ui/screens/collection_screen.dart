@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mongo_wire/mongo_wire.dart';
 
+import '../../state/aggregation_controller.dart';
+import '../../state/documents_controller.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../util/format.dart';
+import 'aggregations_view.dart';
 import 'documents_view.dart';
 import 'indexes_view.dart';
 
-/// A collection with Documents and Indexes tabs.
+/// A collection with Documents, Aggregations and Indexes tabs.
 class CollectionScreen extends ConsumerWidget {
   const CollectionScreen({super.key, required this.namespace});
 
@@ -17,6 +20,10 @@ class CollectionScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
+    // Keep each tab's state (query, page, pipeline) while the collection is
+    // open, even when its tab is off screen.
+    ref.listen(documentsProvider(namespace), (_, _) {});
+    ref.listen(aggregationProvider(AggregationKey(namespace)), (_, _) {});
     final info = ref
         .watch(collectionsProvider(namespace.db))
         .value
@@ -38,7 +45,7 @@ class CollectionScreen extends ConsumerWidget {
     ];
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -54,7 +61,11 @@ class CollectionScreen extends ConsumerWidget {
                 TabBar(
                   isScrollable: true,
                   tabAlignment: TabAlignment.start,
-                  tabs: const [Tab(text: 'Documents'), Tab(text: 'Indexes')],
+                  tabs: const [
+                    Tab(text: 'Documents'),
+                    Tab(text: 'Aggregations'),
+                    Tab(text: 'Indexes'),
+                  ],
                 ),
               ],
             ),
@@ -64,6 +75,10 @@ class CollectionScreen extends ConsumerWidget {
               physics: const NeverScrollableScrollPhysics(),
               children: [
                 DocumentsView(namespace: namespace, info: info),
+                AggregationsView(
+                  aggregationKey: AggregationKey(namespace),
+                  info: info,
+                ),
                 IndexesView(namespace: namespace, info: info),
               ],
             ),

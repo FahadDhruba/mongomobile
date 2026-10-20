@@ -52,6 +52,11 @@ One line per decision: what was decided and why.
 - The explain summary prefers executed stages (with counts) and falls back to the planner's tree for the slot-based engine, whose executed stages have internal names; parsing is tested against explain output captured from MongoDB 7.0.
 - Generated code never includes the user's connection string (a `<connection string>` placeholder instead). The mongosh, Python, Node.js, Go and Java output was compiled/run against MongoDB 7 with the official drivers (pymongo 4.19, node driver 6.21, Go driver v2, Java sync driver 5.2); C# could not be compiled in the sandbox. Collation in Java/C#/Go covers locale and strength (plus caseLevel/numericOrdering in Java).
 - Ligatures are turned off in the monospace font so `!=` and `=>` show as typed.
+- Stage previews append `$limit: 10` to the pipeline up to that stage and run only while the preview is open (debounced 700 ms after edits), so typing doesn't fire a query per keystroke; `$out`/`$merge` stages are never previewed.
+- Stage previews are a sideways row of small cards, as in Compass, because full-size cards made pipelines unreadable on a phone.
+- Pipeline results page with an appended `$skip`/`$limit` (20 per page); aggregation output has no stable key for keyset paging.
+- Editing a view runs the builder on the view's source collection and saves with `collMod {viewOn, pipeline}`; it requires write mode like other changes.
+- Each collection tab's state (query, page, pipeline) is kept alive while the collection is open, so switching tabs no longer resets the Documents query.
 
 ## Blockers and fallbacks
 

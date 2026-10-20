@@ -89,6 +89,13 @@ removes saved connections.
   or an array), edit and clone; delete asks for confirmation. Extended JSON
   types (ObjectId, Date, Int64, Decimal128, Binary, UUID, Timestamp, regex
   and more) survive a round trip unchanged.
+- **Aggregations:** a pipeline builder with stage cards (28 stage types
+  with templates), an on/off switch per stage, reordering, a sideways
+  preview of each stage's output, a text mode for the whole pipeline,
+  collation, Run with paged results, saved pipelines, Explain and Export to
+  language. `$out`/`$merge` pipelines need write mode and a confirmation.
+- **Views:** create a view from a pipeline, and edit an existing view's
+  pipeline in the builder (previewed against its source collection).
 - **Export:** the current query or the whole collection as Extended JSON
   (relaxed or canonical) or CSV with nested fields flattened to columns
   like `address.city` and `items[0].sku`, saved wherever you choose with

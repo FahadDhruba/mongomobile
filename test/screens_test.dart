@@ -12,6 +12,7 @@ import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongomobile/state/providers.dart';
 import 'package:mongomobile/state/query_library.dart';
+import 'package:mongomobile/ui/screens/aggregations_view.dart';
 import 'package:mongomobile/ui/screens/code_export_sheet.dart';
 
 import 'support/fake_client.dart';
@@ -427,5 +428,121 @@ void main() {
     await tester.pumpAndSettle();
     await shot(tester, '24-code');
     expect(find.textContaining('SetSkip(5)'), findsOneWidget);
+  });
+
+  testWidgets('aggregation builder, results, views', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Aggregations'));
+    await tester.pumpAndSettle();
+
+    // Edit the default $match and preview its output.
+    final stageField = find.descendant(
+        of: find.byType(Card).first, matching: find.byType(TextField));
+    await tester.enterText(stageField, '{ paid: true }');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Output preview'));
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Output: first 10 documents'), findsOneWidget);
+    expect(client.pipelines.last.last, {r'$limit': 10});
+
+    // Add a $limit stage through the picker.
+    await tester.scrollUntilVisible(
+      find.text('Add stage'),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byType(AggregationsView),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add stage'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'limit');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(r'$limit').last);
+    await tester.pumpAndSettle();
+    await shot(tester, '25-aggregation');
+    expect(find.text('2 stages'), findsOneWidget);
+    expect(find.text('Stage 2'), findsOneWidget);
+
+    // Run: results page.
+    await tester.tap(find.text('Run'));
+    await tester.pumpAndSettle();
+    await shot(tester, '26-aggregation-results');
+    expect(find.textContaining('1 – 20 ·'), findsOneWidget);
+    expect(client.pipelines.last.take(2).toList(), [
+      {
+        r'$match': {'paid': true},
+      },
+      {r'$limit': 20},
+    ]);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Text mode shows the whole pipeline.
+    await tester.tap(find.byTooltip('Text'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining(r'"$limit": 20'), findsOneWidget);
+    await tester.tap(find.byTooltip('Stages'));
+    await tester.pumpAndSettle();
+
+    // Save it.
+    await tester.tap(find.byTooltip('Pipeline actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Paid sample');
+    await tester.tap(find.widgetWithText(FilledButton, 'Save'));
+    await tester.pumpAndSettle();
+    expect(find.text('Paid sample'), findsOneWidget);
+
+    // Create a view (needs write mode).
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Pipeline actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Create view…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'paid_orders');
+    await tester.tap(find.widgetWithText(FilledButton, 'Create'));
+    await tester.pumpAndSettle();
+    final viewNs = const Namespace('shop', 'paid_orders');
+    expect(client.collectionOptions[viewNs]!['viewOn'], 'orders');
+
+    // Open the view and edit its pipeline.
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    expect(find.text('paid_orders'), findsWidgets);
+    await tester.tap(find.byType(PopupMenuButton<String>).last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Edit view pipeline…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit view paid_orders'), findsOneWidget);
+    expect(find.text('Stage 2'), findsOneWidget);
+    await tester.tap(find.text('Update view'));
+    await tester.pumpAndSettle();
+    expect(client.collMods.last.$1, viewNs);
+    expect(client.collMods.last.$2['viewOn'], 'orders');
+    expect(find.text('View paid_orders updated'), findsOneWidget);
   });
 }
