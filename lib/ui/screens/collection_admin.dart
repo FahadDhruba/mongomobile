@@ -68,7 +68,7 @@ Future<void> dropDatabaseFlow(
   if (ok != true || !context.mounted) return;
   try {
     await ref.read(clientProvider).dropDatabase(db);
-    ref.read(selectionProvider.notifier).clear();
+    ref.read(selectionProvider.notifier).dropped(db: db);
     ref.invalidate(databasesProvider);
     ref.invalidate(collectionsProvider(db));
     if (context.mounted) _snack(context, 'Database $db dropped');
@@ -93,7 +93,7 @@ Future<void> renameCollectionFlow(
     await ref.read(clientProvider).renameCollection(ns, name);
     ref.invalidate(collectionsProvider(ns.db));
     ref.invalidate(collectionStatsProvider(ns));
-    ref.read(selectionProvider.notifier).collection(ns.db, name);
+    ref.read(selectionProvider.notifier).renamed(ns, Namespace(ns.db, name));
     if (context.mounted) {
       _snack(context, 'Renamed ${ns.collection} to $name');
     }

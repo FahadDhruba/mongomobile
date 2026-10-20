@@ -8,6 +8,7 @@ import 'package:mongo_wire/mongo_wire.dart';
 
 import '../../state/documents_controller.dart';
 import 'collection_admin.dart';
+import 'connections_screen.dart';
 import 'collection_screen.dart';
 import 'edit_view_screen.dart';
 import 'export_sheet.dart';
@@ -17,8 +18,10 @@ import 'server_activity_screen.dart';
 import 'settings_screen.dart';
 import 'shell_screen.dart';
 
-/// The connected workspace. The drawer picks a database or collection and
-/// the body shows it. Back goes collection → database → server → disconnect.
+/// Every open connection, one workspace each, with the active one on
+/// screen. Each workspace runs in its own [ProviderScope] and [Navigator],
+/// so its queries, tabs and the screens it opens belong to that connection
+/// and survive switching to another one.
 class WorkspaceScreen extends ConsumerStatefulWidget {
   const WorkspaceScreen({super.key});
 
@@ -27,21 +30,175 @@ class WorkspaceScreen extends ConsumerStatefulWidget {
 }
 
 class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
+  final _navigators = <String, GlobalKey<NavigatorState>>{};
+  final _workspaces = <String, GlobalKey<ConnectionWorkspaceState>>{};
+  bool _leaving = false;
+
+  void _back() {
+    final id = ref.read(sessionsProvider).activeId;
+    final nav = _navigators[id]?.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+      return;
+    }
+    _workspaces[id]?.currentState?.handleBack();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final sessions = ref.watch(sessionsProvider);
+    ref.listen(sessionsProvider, (_, next) {
+      if (next.all.isEmpty && !_leaving && mounted) {
+        _leaving = true;
+        Navigator.of(context).pop();
+      }
+    });
+    final ids = {for (final s in sessions.all) s.profile.id};
+    _navigators.removeWhere((id, _) => !ids.contains(id));
+    _workspaces.removeWhere((id, _) => !ids.contains(id));
+    if (sessions.all.isEmpty) return const Scaffold();
+    final active = sessions.all.indexWhere(
+      (s) => s.profile.id == sessions.activeId,
+    );
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _back();
+      },
+      child: IndexedStack(
+        index: active < 0 ? 0 : active,
+        children: [
+          for (final s in sessions.all)
+            ProviderScope(
+              key: ValueKey(s.profile.id),
+              overrides: [
+                sessionProvider.overrideWith(
+                  (ref) => ref.watch(sessionsProvider).byId(s.profile.id),
+                ),
+                selectionProvider.overrideWith(SelectionNotifier.new),
+              ],
+              child: Navigator(
+                key: _navigators.putIfAbsent(s.profile.id, GlobalKey.new),
+                onGenerateRoute: (_) => MaterialPageRoute<void>(
+                  builder: (_) => ConnectionWorkspace(
+                    key: _workspaces.putIfAbsent(s.profile.id, GlobalKey.new),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// One connection's workspace. The drawer picks a database or collection
+/// and the body shows it, with open collections as tabs. Back goes
+/// collection → database → server → disconnect.
+class ConnectionWorkspace extends ConsumerStatefulWidget {
+  const ConnectionWorkspace({super.key});
+
+  @override
+  ConsumerState<ConnectionWorkspace> createState() =>
+      ConnectionWorkspaceState();
+}
+
+class ConnectionWorkspaceState extends ConsumerState<ConnectionWorkspace> {
   final _scaffold = GlobalKey<ScaffoldState>();
 
+  /// System back: closes the drawer, goes up a level, or disconnects.
+  void handleBack() {
+    if (_scaffold.currentState?.isDrawerOpen ?? false) {
+      _scaffold.currentState!.closeDrawer();
+      return;
+    }
+    if (!ref.read(selectionProvider.notifier).up()) _disconnect();
+  }
+
   Future<void> _disconnect() async {
+    final session = ref.read(sessionProvider);
+    if (session == null) return;
     final ok = await confirmDialog(
       context,
       title: 'Disconnect?',
-      message:
-          'Close the connection to '
-          '${ref.read(sessionProvider)?.profile.displayName ?? 'the server'}?',
+      message: 'Close the connection to ${session.profile.displayName}?',
       confirmLabel: 'Disconnect',
       destructive: false,
     );
     if (!ok || !mounted) return;
-    Navigator.of(context).pop();
-    await ref.read(sessionProvider.notifier).disconnect();
+    await ref.read(sessionsProvider.notifier).disconnect(session.profile.id);
+  }
+
+  /// Lists the open connections to switch between, close, or add to.
+  Future<void> _switcher() async {
+    final current = ref.read(sessionProvider)?.profile.id;
+    final c = context.colors;
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      useRootNavigator: true,
+      builder: (ctx) => Consumer(
+        builder: (ctx, ref, _) {
+          final sessions = ref.watch(sessionsProvider);
+          return SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+                  child: Text(
+                    'Open connections',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                for (final s in sessions.all)
+                  ListTile(
+                    leading: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color:
+                            connectionColors[s.profile.colorIndex %
+                                connectionColors.length],
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    title: Text(s.profile.displayName),
+                    subtitle: Text(
+                      s.client.server.address,
+                      style: TextStyle(color: c.muted, fontSize: 12),
+                    ),
+                    selected: s.profile.id == current,
+                    onTap: () => Navigator.pop(ctx, s.profile.id),
+                    trailing: IconButton(
+                      tooltip: 'Disconnect ${s.profile.displayName}',
+                      onPressed: () => ref
+                          .read(sessionsProvider.notifier)
+                          .disconnect(s.profile.id),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.add),
+                  title: const Text('Open another connection'),
+                  onTap: () => Navigator.pop(ctx, '+'),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (choice == null || !mounted) return;
+    if (choice == '+') {
+      await Navigator.of(context, rootNavigator: true).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const ConnectionsScreen(picking: true),
+        ),
+      );
+    } else {
+      ref.read(sessionsProvider.notifier).activate(choice);
+    }
   }
 
   Future<void> _toggleWrites(bool readOnly) async {
@@ -58,7 +215,10 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
       );
       if (!ok) return;
     }
-    ref.read(sessionProvider.notifier).setReadOnly(!readOnly);
+    final id = ref.read(sessionProvider)?.profile.id;
+    if (id != null) {
+      ref.read(sessionsProvider.notifier).setReadOnly(id, !readOnly);
+    }
   }
 
   CollectionInfo? _infoOf(Namespace ns) => ref
@@ -118,7 +278,9 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
     if (ok != true || !mounted) return;
     try {
       await ref.read(clientProvider).dropCollection(ns);
-      ref.read(selectionProvider.notifier).database(ns.db);
+      ref
+          .read(selectionProvider.notifier)
+          .dropped(db: ns.db, collection: ns.collection);
       ref.invalidate(collectionsProvider(ns.db));
       ref.invalidate(collectionStatsProvider(ns));
       ref.invalidate(databasesProvider);
@@ -143,33 +305,54 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
     if (session == null) return const Scaffold();
 
     final ns = selection.namespace;
-    final Widget body;
+    final Widget overview;
     final String title;
-    final String? subtitle;
+    final String subtitle;
     if (ns != null) {
-      body = CollectionScreen(key: ValueKey(ns), namespace: ns);
+      overview = const SizedBox();
       title = ns.collection;
       subtitle = ns.db;
     } else if (selection.db != null) {
-      body = DatabaseOverview(key: ValueKey(selection.db), db: selection.db!);
+      overview = DatabaseOverview(
+        key: ValueKey(selection.db),
+        db: selection.db!,
+      );
       title = selection.db!;
       subtitle = 'Database';
     } else {
-      body = const ServerOverview();
+      overview = const ServerOverview();
       title = session.profile.displayName;
       subtitle = 'Open the menu to browse';
     }
+    final tabs = selection.tabs;
+    // Open collections stay built, so each keeps its query and page.
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (tabs.isNotEmpty)
+          _TabStrip(
+            tabs: tabs,
+            active: ns,
+            onSelect: (t) => ref
+                .read(selectionProvider.notifier)
+                .collection(t.db, t.collection),
+            onClose: (t) => ref.read(selectionProvider.notifier).closeTab(t),
+          ),
+        Expanded(
+          child: IndexedStack(
+            index: ns == null ? tabs.length : tabs.indexOf(ns),
+            children: [
+              for (final t in tabs)
+                CollectionScreen(key: ValueKey(t), namespace: t),
+              overview,
+            ],
+          ),
+        ),
+      ],
+    );
+    final others = ref.watch(sessionsProvider).all.length - 1;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        if (_scaffold.currentState?.isDrawerOpen ?? false) {
-          _scaffold.currentState!.closeDrawer();
-          return;
-        }
-        if (!ref.read(selectionProvider.notifier).up()) _disconnect();
-      },
+    return KeyedSubtree(
       child: Scaffold(
         key: _scaffold,
         drawer: ExplorerDrawer(
@@ -180,17 +363,33 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
         ),
         appBar: AppBar(
           titleSpacing: 0,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
-              Text(
-                subtitle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 12, color: c.muted),
-              ),
-            ],
+          title: InkWell(
+            onTap: _switcher,
+            child: Row(
+              children: [
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                      Text(
+                        others > 0
+                            ? '$subtitle · ${session.profile.displayName}'
+                            : subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: c.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                Tooltip(
+                  message: 'Switch connection',
+                  child: Icon(Icons.arrow_drop_down, color: c.muted),
+                ),
+                if (others > 0) Pill('+$others', color: c.accent),
+              ],
+            ),
           ),
           actions: [
             _WriteModeChip(
@@ -346,6 +545,83 @@ class _WriteModeChip extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// The open collections, as tabs with a close button.
+class _TabStrip extends StatelessWidget {
+  const _TabStrip({
+    required this.tabs,
+    required this.active,
+    required this.onSelect,
+    required this.onClose,
+  });
+
+  final List<Namespace> tabs;
+  final Namespace? active;
+  final ValueChanged<Namespace> onSelect;
+  final ValueChanged<Namespace> onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      height: 38,
+      decoration: BoxDecoration(
+        color: c.background,
+        border: Border(bottom: BorderSide(color: c.border)),
+      ),
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        children: [
+          for (final t in tabs)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              child: Material(
+                color: t == active ? c.card : Colors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6),
+                  side: BorderSide(color: t == active ? c.accent : c.border),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(6),
+                  onTap: () => onSelect(t),
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 10),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          t.collection,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: t == active
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: t == active ? c.text : c.muted,
+                          ),
+                        ),
+                        SizedBox(
+                          width: 30,
+                          height: 28,
+                          child: IconButton(
+                            tooltip: 'Close ${t.collection}',
+                            padding: EdgeInsets.zero,
+                            iconSize: 15,
+                            onPressed: () => onClose(t),
+                            icon: Icon(Icons.close, color: c.muted),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -14,9 +14,12 @@ import 'settings_screen.dart';
 import 'update_sheet.dart';
 import 'workspace_screen.dart';
 
-/// The start screen: saved connections.
+/// The start screen: saved connections. With [picking], it opens one more
+/// connection next to those already open and goes back to the workspace.
 class ConnectionsScreen extends ConsumerWidget {
-  const ConnectionsScreen({super.key});
+  const ConnectionsScreen({super.key, this.picking = false});
+
+  final bool picking;
 
   Future<void> _edit(BuildContext context, [ConnectionProfile? profile]) =>
       Navigator.push(
@@ -127,6 +130,7 @@ class ConnectionsScreen extends ConsumerWidget {
   ) async {
     var cancelled = false;
     String? error;
+    final wasOpen = ref.read(sessionsProvider).byId(profile.id) != null;
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -151,7 +155,7 @@ class ConnectionsScreen extends ConsumerWidget {
             TextButton(
               onPressed: () {
                 cancelled = true;
-                ref.read(sessionProvider.notifier).cancelSignIn();
+                ref.read(sessionsProvider.notifier).cancelSignIn();
                 Navigator.pop(ctx);
               },
               child: const Text('Cancel'),
@@ -161,14 +165,16 @@ class ConnectionsScreen extends ConsumerWidget {
       ),
     );
     try {
-      await ref.read(sessionProvider.notifier).connect(profile);
+      await ref.read(sessionsProvider.notifier).connect(profile);
     } on Object catch (e) {
       error = describeError(e);
     }
     if (!context.mounted) return;
     if (cancelled) {
       // The user gave up waiting; drop the connection if it arrived anyway.
-      await ref.read(sessionProvider.notifier).disconnect();
+      if (!wasOpen) {
+        await ref.read(sessionsProvider.notifier).disconnect(profile.id);
+      }
       return;
     }
     Navigator.pop(context);
@@ -195,6 +201,10 @@ class ConnectionsScreen extends ConsumerWidget {
       );
       return;
     }
+    if (picking) {
+      Navigator.pop(context);
+      return;
+    }
     await Navigator.push(
       context,
       MaterialPageRoute(builder: (_) => const WorkspaceScreen()),
@@ -207,13 +217,15 @@ class ConnectionsScreen extends ConsumerWidget {
     final connections = ref.watch(connectionsProvider);
     return Scaffold(
       appBar: AppBar(
-        title: const Row(
-          children: [
-            AppLogo(size: 28),
-            SizedBox(width: 10),
-            Text('MongoMobile'),
-          ],
-        ),
+        title: picking
+            ? const Text('Open a connection')
+            : const Row(
+                children: [
+                  AppLogo(size: 28),
+                  SizedBox(width: 10),
+                  Text('MongoMobile'),
+                ],
+              ),
         actions: [
           IconButton(
             tooltip: 'Settings',

@@ -1143,6 +1143,86 @@ void main() {
     expect(saved.group, 'Work');
   });
 
+  testWidgets('collection tabs and several open connections', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+        const ConnectionProfile(id: 'b', name: 'Staging', uri: 'mongodb://stage'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+
+    Future<void> open(String coll) async {
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await tester.pumpAndSettle();
+      final shop = find.descendant(
+          of: find.byType(Drawer), matching: find.text('shop'));
+      if (find.descendant(of: find.byType(Drawer), matching: find.text(coll))
+          .evaluate()
+          .isEmpty) {
+        await tester.tap(shop);
+        await tester.pumpAndSettle();
+      }
+      await tester.tap(find.descendant(
+          of: find.byType(Drawer), matching: find.text(coll)));
+      await tester.pumpAndSettle();
+    }
+
+    await open('orders');
+    await tester.enterText(find.byType(TextField).first, '{ paid: true }');
+    await tester.tap(find.text('Find'));
+    await tester.pumpAndSettle();
+    expect(find.text('1 – 20 of 20'), findsOneWidget);
+    await open('customers');
+    expect(find.byTooltip('Close orders'), findsOneWidget);
+    expect(find.byTooltip('Close customers'), findsOneWidget);
+    await shot(tester, '30-tabs');
+
+    // Back to the orders tab: its query and page are still there.
+    await tester.tap(find.widgetWithText(InkWell, 'orders').first);
+    await tester.pumpAndSettle();
+    expect(find.text('1 – 20 of 20'), findsOneWidget);
+
+    // A second connection, then back to the first.
+    await tester.tap(find.byTooltip('Switch connection'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Open another connection'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open a connection'), findsOneWidget);
+    await tester.tap(find.text('Staging'));
+    await tester.pumpAndSettle();
+    expect(find.text('Staging'), findsWidgets);
+    expect(find.text('+1'), findsOneWidget);
+    expect(find.byTooltip('Close orders'), findsNothing);
+
+    await tester.tap(find.byTooltip('Switch connection'));
+    await tester.pumpAndSettle();
+    expect(find.text('Open connections'), findsOneWidget);
+    await tester.tap(find.widgetWithText(ListTile, 'Local dev'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Close orders'), findsOneWidget);
+    expect(find.text('1 – 20 of 20'), findsOneWidget);
+
+    // Closing the active tab shows its neighbour.
+    await tester.tap(find.byTooltip('Close orders'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Close orders'), findsNothing);
+    expect(find.byTooltip('Close customers'), findsOneWidget);
+
+    // Disconnecting one connection keeps the other.
+    await tester.tap(find.byTooltip('Switch connection'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Disconnect Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+    expect(find.text('Staging'), findsWidgets);
+    expect(find.text('+1'), findsNothing);
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

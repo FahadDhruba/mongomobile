@@ -47,7 +47,7 @@ final sampledFieldsProvider = FutureProvider.autoDispose
       } on Object {
         return const [];
       }
-    });
+    }, dependencies: [clientProvider]);
 
 /// The Documents tab: query bar, toolbar, one page of results and the
 /// pagination controls.

@@ -14,6 +14,7 @@ import '../widgets/query_assist.dart';
 final indexesProvider = FutureProvider.autoDispose
     .family<List<Map<String, dynamic>>, Namespace>(
       (ref, ns) => ref.watch(clientProvider).listIndexes(ns),
+      dependencies: [clientProvider],
     );
 
 /// How often an index was used, from `$indexStats`.
@@ -38,7 +39,7 @@ final indexUsageProvider = FutureProvider.autoDispose
       } on Object {
         return const {};
       }
-    });
+    }, dependencies: [clientProvider]);
 
 int _int(Object? v) => switch (v) {
   int() => v,
@@ -117,7 +118,7 @@ final indexBuildsProvider = FutureProvider.autoDispose
       } on Object {
         return const [];
       }
-    });
+    }, dependencies: [clientProvider]);
 
 /// The Indexes tab: lists indexes with their usage, shows builds in
 /// progress, and creates, hides and drops indexes.
