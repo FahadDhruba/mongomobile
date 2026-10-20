@@ -226,6 +226,10 @@ class FakeMongoClient implements MongoClient {
       'key': keys,
       'name': name,
       if (options.unique) 'unique': true,
+      if (options.hidden) 'hidden': true,
+      if (options.collation != null) 'collation': options.collation,
+      if (options.wildcardProjection != null)
+        'wildcardProjection': options.wildcardProjection,
     });
     return name;
   }
@@ -253,13 +257,17 @@ class FakeMongoClient implements MongoClient {
     CancelToken? cancel,
   }) async {
     pipelines.add(pipeline);
-    var docs = [for (final d in _coll(ns)) {...d}];
+    var docs = [
+      for (final d in _coll(ns)) {...d},
+    ];
     for (final stage in pipeline) {
       final op = stage.keys.single;
       final arg = stage[op];
       switch (op) {
         case r'$match':
-          docs = docs.where((d) => matches(d, arg as Map<String, dynamic>)).toList();
+          docs = docs
+              .where((d) => matches(d, arg as Map<String, dynamic>))
+              .toList();
         case r'$sort':
           final m = arg as Map<String, dynamic>;
           final field = m.keys.single;
@@ -275,7 +283,10 @@ class FakeMongoClient implements MongoClient {
           final keep = (arg as Map<String, dynamic>).keys.toSet()..add('_id');
           docs = [
             for (final d in docs)
-              {for (final e in d.entries) if (keep.contains(e.key)) e.key: e.value},
+              {
+                for (final e in d.entries)
+                  if (keep.contains(e.key)) e.key: e.value,
+              },
           ];
         case r'$count':
           docs = [
@@ -435,6 +446,15 @@ class FakeMongoClient implements MongoClient {
     Map<String, dynamic> options,
   ) async {
     collMods.add((ns, options));
+    if (options['index'] case {
+      'name': final String name,
+      'hidden': final bool h,
+    }) {
+      for (final i in indexes[ns] ?? const <Map<String, dynamic>>[]) {
+        if (i['name'] == name) i['hidden'] = h;
+      }
+      return;
+    }
     collectionOptions[ns] = {...?collectionOptions[ns], ...options};
   }
 
@@ -447,6 +467,11 @@ class FakeMongoClient implements MongoClient {
       'name': '_id_',
       'accesses': {'ops': BsonLong(42), 'since': DateTime.utc(2024)},
     },
+    for (final i in indexes[ns] ?? const <Map<String, dynamic>>[])
+      {
+        'name': i['name'],
+        'accesses': {'ops': BsonLong(0), 'since': DateTime.utc(2024)},
+      },
   ];
 
   @override
@@ -487,7 +512,14 @@ class FakeMongoClient implements MongoClient {
     Map<String, dynamic> command, {
     CancelToken? cancel,
     Duration? maxTime,
-  }) async => {'ok': 1};
+  }) async {
+    commands.add((db, command));
+    return onCommand?.call(db, command) ?? {'ok': 1};
+  }
+
+  /// Answers [runCommand]; null replies `{ok: 1}`.
+  Map<String, dynamic>? Function(String db, Map<String, dynamic> command)?
+  onCommand;
 
   @override
   Future<void> close() async => closed = true;

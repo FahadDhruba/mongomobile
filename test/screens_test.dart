@@ -727,6 +727,112 @@ void main() {
     );
   });
 
+  testWidgets('index usage, hiding, builds and options', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    const orders = Namespace('shop', 'orders');
+    client.indexes[orders] = [
+      {
+        'v': 2,
+        'key': {'customer.name': 1},
+        'name': 'customer.name_1',
+      },
+    ];
+    var building = true;
+    client.onCommand = (db, cmd) {
+      if (cmd['aggregate'] == 1 && building) {
+        return {
+          'cursor': {
+            'firstBatch': [
+              {
+                'opid': 7,
+                'command': {
+                  'createIndexes': 'orders',
+                  'indexes': [
+                    {
+                      'key': {'total': 1},
+                      'name': 'total_1',
+                    },
+                  ],
+                },
+                'progress': {'done': 30, 'total': 40},
+                'msg': 'Index Build: scanning collection 30/40 75%',
+              },
+            ],
+          },
+        };
+      }
+      return null;
+    };
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Indexes'));
+    await tester.pumpAndSettle();
+    expect(find.text('BUILDING'), findsOneWidget);
+    expect(find.text('75%'), findsOneWidget);
+    expect(find.textContaining('Used 42 times'), findsOneWidget);
+    expect(find.textContaining('Not used'), findsOneWidget);
+    await shot(tester, '24-indexes');
+    expect(client.commands.last.$2['pipeline'], isA<List<Object?>>());
+
+    // The build finishes: polling stops and the list refreshes.
+    building = false;
+    client.indexes[orders]!.add({
+      'v': 2,
+      'key': {'total': 1},
+      'name': 'total_1',
+    });
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('BUILDING'), findsNothing);
+    expect(find.text('total_1'), findsOneWidget);
+
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Index actions').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hide index'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Hide'));
+    await tester.pumpAndSettle();
+    expect(client.collMods.last.$2, {
+      'index': {'name': 'customer.name_1', 'hidden': true},
+    });
+    expect(find.text('HIDDEN'), findsOneWidget);
+
+    await tester.tap(find.text('Create Index'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Keys'), r'{ "$**": 1 }');
+    await tester.pump();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Wildcard projection (optional)'),
+        '{ customer: 1 }');
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Collation (optional)'),
+        "{ locale: 'en', strength: 2 }");
+    await tester.tap(find.text('Create Index').last);
+    await tester.pumpAndSettle();
+    final created = client.indexes[orders]!.last;
+    expect(created['name'], r'$**_1');
+    expect(created['wildcardProjection'], {'customer': 1});
+    expect(created['collation'], {'locale': 'en', 'strength': 2});
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()
