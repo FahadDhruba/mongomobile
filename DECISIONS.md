@@ -64,6 +64,13 @@ One line per decision: what was decided and why.
 - Import reads the picked file through a new `ACTION_OPEN_DOCUMENT` channel in 256 KB chunks, so files larger than memory work; JSON is split into documents by a bracket-counting scanner (which handles strings and both quote styles) before each is parsed.
 - Import inserts unordered batches of 1,000 by default, so one bad document doesn't stop the rest; "Stop on the first error" switches to ordered inserts. Only the first 50 errors are kept for display.
 - CSV column types are guessed from the first 64 KB (ObjectId, Boolean, Int32, Int64, Double, Date, JSON, else String) and can be changed per column; empty cells are left out by default. Headers like `items[0].sku` rebuild arrays, so a CSV export imports back to the same documents (tested).
+- Create database and Create collection share one screen: MongoDB has no "create database" command, so a database is created with its first collection, as in Compass. Capped, time series and clustered are mutually exclusive choices (chips), matching what the server allows; option shapes were checked against mongo:7.
+- Drop database requires typing its name, and `admin`, `local` and `config` are never offered, since dropping them can break the deployment.
+- Rename is offered for collections only; the server can't rename views.
+- The Schema tab samples with `$sample` after the Documents tab's filter (Compass also analyses the current query), up to 5,000 documents and 64 MB, and runs only when you tap Analyze. Value summaries look at up to 500 values per type to keep memory flat.
+- Field and type percentages count documents that have the field, so nested fields are relative to their parent documents, as in Compass.
+- The Validation tab finds its sample documents with the rules themselves as the filter (passes) and `{$nor: [rules]}` (fails), which is how Compass does it; generated `$jsonSchema` rules mark fields present in every sampled document as required, and were checked on mongo:7 (sample accepted, wrong types and missing fields rejected).
+- The tab bar scrolls (five tabs don't fit a phone's width); Schema and Validation keep their state when you switch tabs.
 
 ## Blockers and fallbacks
 

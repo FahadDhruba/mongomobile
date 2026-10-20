@@ -117,8 +117,19 @@ removes saved connections.
   like `address.city` and `items[0].sku`, saved wherever you choose with
   Android's file picker. Large exports stream in batches with progress and
   a Cancel button.
-- **Collections:** drop a collection from the collection menu (write mode,
-  and you type its name to confirm).
+- **Schema:** samples 100, 1,000 or 5,000 documents (matching the
+  Documents filter) and shows each field's frequency, its types as a bar,
+  the most common values, number and date histograms, array lengths, and
+  nested fields.
+- **Validation:** view and edit the validator (a query or `$jsonSchema`),
+  its action (error or warning) and level (strict, moderate, off), with one
+  document that passes and one that fails the rules as you type.
+  **Generate** writes a `$jsonSchema` from a 1,000-document sample.
+- **Databases and collections:** create a database or a collection
+  (standard, capped, time series or clustered, with an optional default
+  collation), rename a collection, and drop a collection or a database
+  (write mode, and you type its name to confirm). `admin`, `local` and
+  `config` can't be dropped from the app.
 - **Updates:** the app checks GitHub Releases at start (can be turned off in
   Settings) and offers **Download and install**. The APK is checked against
   the release's SHA-256 file and handed to Android's installer, which keeps
