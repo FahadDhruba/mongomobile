@@ -22,6 +22,7 @@ import 'explain_screen.dart';
 import 'field_edit_sheet.dart';
 import 'export_sheet.dart';
 import 'history_sheet.dart';
+import 'import_screen.dart';
 
 enum DocumentView { list, json, table }
 
@@ -292,6 +293,20 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     ref.invalidate(collectionStatsProvider(widget.namespace));
   }
 
+  Future<void> _import() async {
+    final message = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ImportScreen(namespace: widget.namespace),
+      ),
+    );
+    if (!mounted) return;
+    // Refresh even after a cancelled import: part of it may be in.
+    await _ctrl.refresh();
+    ref.invalidate(collectionStatsProvider(widget.namespace));
+    if (message != null) _snack(message);
+  }
+
   Future<void> _delete(Object? id) async {
     final ok = await confirmDialog(
       context,
@@ -388,6 +403,7 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
           onBulkUpdate: canWrite
               ? () => _bulk(state.query, delete: false)
               : null,
+          onImport: canWrite ? _import : null,
           onBulkDelete: canWrite
               ? () => _bulk(state.query, delete: true)
               : null,
@@ -488,6 +504,7 @@ class _Toolbar extends StatelessWidget {
     required this.onExportCode,
     required this.onBulkUpdate,
     required this.onBulkDelete,
+    required this.onImport,
   });
 
   final DocumentsState state;
@@ -507,6 +524,7 @@ class _Toolbar extends StatelessWidget {
   /// Null in read-only mode.
   final VoidCallback? onBulkUpdate;
   final VoidCallback? onBulkDelete;
+  final VoidCallback? onImport;
 
   @override
   Widget build(BuildContext context) {
@@ -565,6 +583,7 @@ class _Toolbar extends StatelessWidget {
                   'export' => onExport(),
                   'update' => onBulkUpdate?.call(),
                   'delete' => onBulkDelete?.call(),
+                  'import' => onImport?.call(),
                   _ => null,
                 },
                 itemBuilder: (_) => [
@@ -587,6 +606,15 @@ class _Toolbar extends StatelessWidget {
                     child: ListTile(
                       leading: Icon(Icons.file_download_outlined),
                       title: Text('Export data'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'import',
+                    enabled: onImport != null,
+                    child: const ListTile(
+                      leading: Icon(Icons.file_upload_outlined),
+                      title: Text('Import data'),
+                      subtitle: Text('JSON or CSV'),
                     ),
                   ),
                   const PopupMenuDivider(),

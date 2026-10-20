@@ -10,6 +10,8 @@ import 'package:mongo_wire/mongo_wire.dart';
 import 'package:mongomobile/app.dart';
 import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/models/connection_profile.dart';
+import 'package:mongomobile/services/importer.dart';
+import 'package:mongomobile/services/native.dart';
 import 'package:mongomobile/state/providers.dart';
 import 'package:mongomobile/state/query_library.dart';
 import 'package:mongomobile/ui/screens/aggregations_view.dart';
@@ -89,8 +91,28 @@ Map<String, Map<String, List<Map<String, dynamic>>>> sampleData() {
   };
 }
 
+class TextSource implements ImportSource {
+  TextSource(this.name, this.text);
+  final String text;
+  @override
+  final String name;
+  @override
+  int? get size => text.length;
+  @override
+  Stream<List<int>> read() => Stream.value(text.codeUnits);
+}
+
+/// Hands out [file] instead of opening Android's picker.
+class FakeFiles extends NativeFiles {
+  FakeFiles(this.file);
+  ImportSource? file;
+  @override
+  Future<ImportSource?> open(List<String> mimeTypes) async => file;
+}
+
 Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
-    MemoryConnectionStore store, {AppSettings settings = const AppSettings()}) async {
+    MemoryConnectionStore store,
+    {AppSettings settings = const AppSettings(), NativeFiles? files}) async {
   tester.view.physicalSize = const Size(412 * 2.0, 892 * 2.0);
   tester.view.devicePixelRatio = 2.0;
   addTearDown(tester.view.reset);
@@ -103,6 +125,7 @@ Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
         initialSettingsProvider.overrideWithValue(settings),
         settingsStoreProvider.overrideWithValue(MemorySettingsStore()),
         queryLibraryStoreProvider.overrideWithValue(MemoryQueryLibraryStore()),
+        if (files != null) nativeFilesProvider.overrideWithValue(files),
       ],
       retry: (_, _) => null,
       child: RepaintBoundary(key: _boundary, child: const MongoMobileApp()),
@@ -415,6 +438,69 @@ void main() {
     expect(find.text('Deleted 20 documents'), findsOneWidget);
     expect(orders.length, 20);
     expect(orders.every((d) => d['paid'] == false), isTrue);
+  });
+
+  testWidgets('import a CSV file', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    final files = FakeFiles(TextSource(
+      'people.csv',
+      'name;age;joined;address.city\nAda;36;2024-05-01;London\n'
+          'Alan;41;2024-06-02;Wilmslow\nGrace;x;2024-07-03;\n',
+    ));
+    await pumpApp(tester, client, store, files: files);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('customers'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import data'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('people.csv'), findsOneWidget);
+    expect(find.text('Semicolon'), findsOneWidget);
+    expect(find.text('address.city'), findsOneWidget);
+    // "x" in the age column makes it a string; switch it to Int32.
+    await tester.tap(find.byTooltip('Type of age'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Int32').last);
+    await tester.pumpAndSettle();
+    await shot(tester, '19-import-options');
+    await tester.tap(find.text('Import'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import finished with errors'), findsOneWidget);
+    expect(find.textContaining('Row 4: age'), findsOneWidget);
+    await shot(tester, '19b-import-done');
+    await tester.tap(find.text('Done'));
+    await tester.pumpAndSettle();
+    expect(find.text('Imported 2 documents'), findsOneWidget);
+    final docs = client.data['shop']!['customers']!;
+    expect(docs.length, 2);
+    expect(docs[0]['age'], 36);
+    expect(docs[0]['joined'], DateTime.utc(2024, 5, 1));
+    expect(docs[1]['address'], {'city': 'Wilmslow'});
+
+    // Cancelling the picker leaves the screen.
+    files.file = null;
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Import data'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import into customers'), findsNothing);
   });
 
   testWidgets('export to a file and drop a collection', (tester) async {
