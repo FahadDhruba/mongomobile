@@ -896,6 +896,9 @@ class WireMongoClient implements MongoClient {
             'expireAfterSeconds': options.expireAfter!.inSeconds,
           if (options.partialFilterExpression != null)
             'partialFilterExpression': options.partialFilterExpression,
+          if (options.collation != null) 'collation': options.collation,
+          if (options.wildcardProjection != null)
+            'wildcardProjection': options.wildcardProjection,
         },
       ],
     });

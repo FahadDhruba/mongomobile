@@ -582,6 +582,45 @@ void main() {
     expect(indexes.map((i) => i['name']), isNot(contains(name)));
   });
 
+  test('creates collated and wildcard indexes', () async {
+    final coll = ns('idx_opts');
+    await client.insertOne(coll, {
+      'name': 'a',
+      'attrs': {'x': 1},
+    });
+    await client.createIndex(coll, {
+      'name': 1,
+    }, const IndexOptions(collation: {'locale': 'en', 'strength': 2}));
+    await client.createIndex(coll, {
+      r'$**': 1,
+    }, const IndexOptions(wildcardProjection: {'attrs': 1}));
+    final indexes = await client.listIndexes(coll);
+    final collated = indexes.firstWhere((i) => i['name'] == 'name_1');
+    expect((collated['collation'] as Map<String, dynamic>)['locale'], 'en');
+    expect((collated['collation'] as Map<String, dynamic>)['strength'], 2);
+    final wildcard = indexes.firstWhere((i) => i['name'] == r'$**_1');
+    expect(wildcard['wildcardProjection'], {'attrs': 1});
+  });
+
+  test('reads current operations and server status', () async {
+    final ops = await client.runCommand('admin', {
+      'aggregate': 1,
+      'pipeline': [
+        {
+          r'$currentOp': {'allUsers': true, 'idleConnections': false},
+        },
+      ],
+      'cursor': {'batchSize': 1000},
+    });
+    final batch = (ops['cursor'] as Map)['firstBatch'] as List;
+    expect(batch, isNotEmpty);
+    final status = await client.runCommand('admin', {'serverStatus': 1});
+    expect(status['opcounters'], isA<Map<String, dynamic>>());
+    expect(status['connections'], isA<Map<String, dynamic>>());
+    final profile = await client.runCommand(dbName, {'profile': -1});
+    expect(profile['was'], isNotNull);
+  });
+
   group('authentication', () {
     final user = 'mw_user_${DateTime.now().millisecondsSinceEpoch}';
 

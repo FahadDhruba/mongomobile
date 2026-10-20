@@ -170,6 +170,8 @@ final class IndexOptions {
     this.hidden = false,
     this.expireAfter,
     this.partialFilterExpression,
+    this.collation,
+    this.wildcardProjection,
   });
 
   final String? name;
@@ -178,6 +180,10 @@ final class IndexOptions {
   final bool hidden;
   final Duration? expireAfter;
   final Map<String, dynamic>? partialFilterExpression;
+  final Map<String, dynamic>? collation;
+
+  /// For wildcard (`$**`) indexes: the fields to include or exclude.
+  final Map<String, dynamic>? wildcardProjection;
 }
 
 /// The operations MongoMobile needs from a database connection.
