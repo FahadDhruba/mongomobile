@@ -12,6 +12,8 @@ class ConnectionProfile {
     this.caCertificatePem,
     this.colorIndex = 0,
     this.lastUsed,
+    this.favorite = false,
+    this.group = '',
   });
 
   static String newId() {
@@ -29,6 +31,12 @@ class ConnectionProfile {
   final int colorIndex;
   final DateTime? lastUsed;
 
+  /// Starred: listed first.
+  final bool favorite;
+
+  /// A folder name on the connections screen; empty for none.
+  final String group;
+
   /// Hosts for display, without credentials.
   String get displayHost {
     try {
@@ -43,10 +51,10 @@ class ConnectionProfile {
   String get displayName => name.trim().isEmpty ? displayHost : name;
 
   ConnectOptions get connectOptions => ConnectOptions(
-        allowInvalidCertificates: allowInvalidCertificates,
-        caCertificatePem: caCertificatePem,
-        poolSize: 6,
-      );
+    allowInvalidCertificates: allowInvalidCertificates,
+    caCertificatePem: caCertificatePem,
+    poolSize: 6,
+  );
 
   ConnectionProfile copyWith({
     String? id,
@@ -56,27 +64,32 @@ class ConnectionProfile {
     String? caCertificatePem,
     int? colorIndex,
     DateTime? lastUsed,
-  }) =>
-      ConnectionProfile(
-        id: id ?? this.id,
-        name: name ?? this.name,
-        uri: uri ?? this.uri,
-        allowInvalidCertificates:
-            allowInvalidCertificates ?? this.allowInvalidCertificates,
-        caCertificatePem: caCertificatePem ?? this.caCertificatePem,
-        colorIndex: colorIndex ?? this.colorIndex,
-        lastUsed: lastUsed ?? this.lastUsed,
-      );
+    bool? favorite,
+    String? group,
+  }) => ConnectionProfile(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    uri: uri ?? this.uri,
+    allowInvalidCertificates:
+        allowInvalidCertificates ?? this.allowInvalidCertificates,
+    caCertificatePem: caCertificatePem ?? this.caCertificatePem,
+    colorIndex: colorIndex ?? this.colorIndex,
+    lastUsed: lastUsed ?? this.lastUsed,
+    favorite: favorite ?? this.favorite,
+    group: group ?? this.group,
+  );
 
   Map<String, dynamic> toJson() => {
-        'id': id,
-        'name': name,
-        'uri': uri,
-        'allowInvalidCertificates': allowInvalidCertificates,
-        if (caCertificatePem != null) 'caCertificatePem': caCertificatePem,
-        'colorIndex': colorIndex,
-        if (lastUsed != null) 'lastUsed': lastUsed!.toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'uri': uri,
+    'allowInvalidCertificates': allowInvalidCertificates,
+    if (caCertificatePem != null) 'caCertificatePem': caCertificatePem,
+    'colorIndex': colorIndex,
+    if (lastUsed != null) 'lastUsed': lastUsed!.toIso8601String(),
+    if (favorite) 'favorite': true,
+    if (group.isNotEmpty) 'group': group,
+  };
 
   factory ConnectionProfile.fromJson(Map<String, dynamic> j) =>
       ConnectionProfile(
@@ -87,5 +100,7 @@ class ConnectionProfile {
         caCertificatePem: j['caCertificatePem'] as String?,
         colorIndex: (j['colorIndex'] as int?) ?? 0,
         lastUsed: DateTime.tryParse((j['lastUsed'] as String?) ?? ''),
+        favorite: j['favorite'] == true,
+        group: (j['group'] as String?) ?? '',
       );
 }
