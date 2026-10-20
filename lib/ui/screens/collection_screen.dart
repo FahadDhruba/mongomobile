@@ -10,8 +10,9 @@ import '../../util/format.dart';
 import 'aggregations_view.dart';
 import 'documents_view.dart';
 import 'indexes_view.dart';
+import 'schema_view.dart';
 
-/// A collection with Documents, Aggregations and Indexes tabs.
+/// A collection with Documents, Aggregations, Schema and Indexes tabs.
 class CollectionScreen extends ConsumerWidget {
   const CollectionScreen({super.key, required this.namespace});
 
@@ -45,7 +46,7 @@ class CollectionScreen extends ConsumerWidget {
     ];
 
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -64,6 +65,7 @@ class CollectionScreen extends ConsumerWidget {
                   tabs: const [
                     Tab(text: 'Documents'),
                     Tab(text: 'Aggregations'),
+                    Tab(text: 'Schema'),
                     Tab(text: 'Indexes'),
                   ],
                 ),
@@ -79,6 +81,7 @@ class CollectionScreen extends ConsumerWidget {
                   aggregationKey: AggregationKey(namespace),
                   info: info,
                 ),
+                SchemaView(namespace: namespace),
                 IndexesView(namespace: namespace, info: info),
               ],
             ),

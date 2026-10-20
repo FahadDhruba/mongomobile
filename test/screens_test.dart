@@ -607,6 +607,59 @@ void main() {
     expect(find.text('Database metrics dropped'), findsOneWidget);
   });
 
+  testWidgets('schema tab', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '{ paid: true }');
+    await tester.tap(find.text('Find'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Schema'));
+    await tester.pumpAndSettle();
+    expect(find.text('Analyze the schema'), findsOneWidget);
+    await tester.tap(find.text('Analyze'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Analyzed 20 documents matching'), findsOneWidget);
+    expect(client.pipelines.last.first, {
+      r'$match': {'paid': true},
+    });
+    // notes is a long string on one document and null on the rest.
+    await tester.scrollUntilVisible(find.text('notes'), 300,
+        scrollable: find.byType(Scrollable).last);
+    expect(find.text('Null 95%'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('customer'), -300,
+        scrollable: find.byType(Scrollable).last);
+    await tester.ensureVisible(find.text('Show 3 nested fields').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Show 3 nested fields').first);
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('address'), 200,
+        scrollable: find.byType(Scrollable).last);
+    expect(find.text('address'), findsOneWidget);
+    await shot(tester, '22-schema');
+
+    // The analysis survives a trip to another tab.
+    await tester.tap(find.text('Documents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Schema'));
+    await tester.pumpAndSettle();
+    expect(find.text('Analyze again'), findsOneWidget);
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

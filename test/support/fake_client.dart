@@ -262,6 +262,8 @@ class FakeMongoClient implements MongoClient {
           docs = docs.skip(arg as int).toList();
         case r'$limit':
           docs = docs.take(arg as int).toList();
+        case r'$sample':
+          docs = docs.take((arg as Map)['size'] as int).toList();
         case r'$project':
           final keep = (arg as Map<String, dynamic>).keys.toSet()..add('_id');
           docs = [
