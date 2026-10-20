@@ -61,6 +61,16 @@ removes saved connections.
   is wrapped in `{ }`, and a row of chips suggests field names (sampled from
   the collection), operators such as `$gt` and `$in` under a field, and
   helpers like `ObjectId('')` and `ISODate('')` in value position.
+- **Query options:** Project, Sort, Collation, Hint, Skip, Limit and a
+  per-query Max time, like Compass. Queries you run are kept in a
+  **history**, and you can save **favourites**; both are stored encrypted on
+  the device.
+- **Explain plan:** a summary (index used or collection scan, in-memory
+  sort, covered query, documents read per document returned), the
+  executed plan as a list of stages with counts, and the raw output.
+- **Export to language:** the current query as code for mongosh, Python,
+  Node.js, Java, C# or Go, with a placeholder instead of your connection
+  string.
 - **Pagination built for big collections:** pages of 10, 25, 50 or 100
   with a label like `1 – 25 of ~2.4M` and previous/next buttons. Only the
   current page is kept in memory.

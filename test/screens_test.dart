@@ -11,6 +11,8 @@ import 'package:mongomobile/app.dart';
 import 'package:mongomobile/models/app_settings.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongomobile/state/providers.dart';
+import 'package:mongomobile/state/query_library.dart';
+import 'package:mongomobile/ui/screens/code_export_sheet.dart';
 
 import 'support/fake_client.dart';
 
@@ -99,6 +101,7 @@ Future<void> pumpApp(WidgetTester tester, FakeMongoClient client,
         connectionStoreProvider.overrideWithValue(store),
         initialSettingsProvider.overrideWithValue(settings),
         settingsStoreProvider.overrideWithValue(MemorySettingsStore()),
+        queryLibraryStoreProvider.overrideWithValue(MemoryQueryLibraryStore()),
       ],
       retry: (_, _) => null,
       child: RepaintBoundary(key: _boundary, child: const MongoMobileApp()),
@@ -324,5 +327,105 @@ void main() {
     expect(client.data['shop']!.containsKey('orders'), isFalse);
     expect(find.text('Collection orders dropped'), findsOneWidget);
     expect(find.text('Database'), findsOneWidget);
+  });
+
+  testWidgets('query options, history, explain and code export', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+
+    // All options are there.
+    await tester.tap(find.text('Options'));
+    await tester.pumpAndSettle();
+    for (final label in ['Project', 'Sort', 'Collation', 'Hint', 'Skip', 'Limit', 'Max time ms']) {
+      expect(find.text(label), findsOneWidget, reason: label);
+    }
+    TextField field(String label) => tester.widget<TextField>(
+          find.ancestor(of: find.text(label), matching: find.byType(TextField)));
+    await tester.enterText(find.byType(TextField).first, '{ paid: true }');
+    await tester.enterText(
+        find.ancestor(of: find.text('Skip'), matching: find.byType(TextField)), '5');
+    await tester.enterText(
+        find.ancestor(of: find.text('Hint'), matching: find.byType(TextField)), 'paid_1');
+    await shot(tester, '21-query-options');
+    await tester.tap(find.text('Find'));
+    await tester.pumpAndSettle();
+    expect(client.finds.last.skip, 5);
+    expect(client.finds.last.hint, 'paid_1');
+    expect(field('Skip').controller!.text, '5');
+
+    // Saved to history; reset, then bring it back from history.
+    await tester.tap(find.text('Reset'));
+    await tester.pumpAndSettle();
+    expect(field('Skip').controller!.text, '');
+    await tester.tap(find.byTooltip('Query history'));
+    await tester.pumpAndSettle();
+    await shot(tester, '22-history');
+    expect(find.text('filter: { paid: true }'), findsOneWidget);
+    await tester.tap(find.text('filter: { paid: true }'));
+    await tester.pumpAndSettle();
+    expect(field('Skip').controller!.text, '5');
+    expect(client.finds.last.skip, 5);
+
+    // Save as favourite.
+    await tester.tap(find.byTooltip('Save as favourite'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'Paid orders');
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Query history'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Favourites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Paid orders'), findsOneWidget);
+    await tester.tapAt(const Offset(200, 40));
+    await tester.pumpAndSettle();
+
+    // Explain.
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Explain plan'));
+    await tester.pumpAndSettle();
+    await shot(tester, '23-explain');
+    expect(find.text('Uses index paid_1.'), findsOneWidget);
+    expect(find.text('IXSCAN'), findsOneWidget);
+    expect(client.explained.last['skip'], 5);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    // Export to language.
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Export query to language'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('collection.find('), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Go'),
+      150,
+      scrollable: find
+          .descendant(
+            of: find.byType(CodeExportSheet),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Go'));
+    await tester.pumpAndSettle();
+    await shot(tester, '24-code');
+    expect(find.textContaining('SetSkip(5)'), findsOneWidget);
   });
 }

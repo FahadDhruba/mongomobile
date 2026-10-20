@@ -120,6 +120,9 @@ TextStyle monoStyle(BuildContext context,
     height: 1.45,
     color: color ?? context.colors.text,
     fontWeight: weight,
+    // No ligatures: `!=` must not turn into `≠` in code and data that people
+    // read and retype.
+    fontFeatures: const [FontFeature.disable('liga'), FontFeature.disable('calt')],
   );
 }
 

@@ -14,7 +14,12 @@ import '../widgets/document_table.dart';
 import '../widgets/query_assist.dart';
 import '../widgets/query_bar.dart';
 import 'document_editor_screen.dart';
+import '../../services/codegen.dart';
+import '../../state/query_library.dart';
+import 'code_export_sheet.dart';
+import 'explain_screen.dart';
 import 'export_sheet.dart';
+import 'history_sheet.dart';
 
 enum DocumentView { list, json, table }
 
@@ -146,6 +151,72 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     }
   }
 
+  Future<void> _openHistory() async {
+    await ref.read(queryLibraryProvider.future);
+    if (!mounted) return;
+    final picked = await showQueryHistory(context, widget.namespace);
+    if (picked == null || !mounted) return;
+    try {
+      final q = QuerySpec.fromTexts(picked.texts);
+      _toTop();
+      await _ctrl.run(q);
+    } on FormatException catch (e) {
+      _snack(e.message);
+    }
+  }
+
+  Future<void> _saveFavorite(QuerySpec q) async {
+    final name = await askName(context, title: 'Save favourite query');
+    if (name == null) return;
+    await ref
+        .read(queryLibraryProvider.notifier)
+        .addFavorite(widget.namespace, name, q.toTexts());
+    _snack('Saved "$name" to favourites');
+  }
+
+  /// The find command the current query runs, for explain.
+  Map<String, dynamic> _findCommand(QuerySpec q) => {
+    'find': widget.namespace.collection,
+    'filter': q.filter,
+    'projection': ?q.projection,
+    'sort': ?q.sort,
+    if (q.skip > 0) 'skip': q.skip,
+    'limit': ?q.limit,
+    'collation': ?q.collation,
+    'hint': ?q.hint,
+  };
+
+  void _explain(QuerySpec q) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ExplainScreen(
+          namespace: widget.namespace,
+          command: _findCommand(q),
+          maxTime: q.maxTime,
+        ),
+      ),
+    );
+  }
+
+  void _exportCode(QuerySpec q) {
+    final code = CodeQuery(
+      filter: q.filter,
+      projection: q.projection,
+      sort: q.sort,
+      skip: q.skip,
+      limit: q.limit,
+      collation: q.collation,
+      hint: q.hint,
+      maxTimeMs: q.maxTime?.inMilliseconds,
+    );
+    showCodeExport(
+      context,
+      title: 'Export query to language',
+      generate: (lang) => findCode(lang, widget.namespace, code),
+    );
+  }
+
   Future<void> _edit(Object? id) async {
     final doc = await _fetchFull(id);
     if (doc == null || !mounted) return;
@@ -212,11 +283,16 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
           onFind: (q) {
             _toTop();
             _ctrl.run(q);
+            ref
+                .read(queryLibraryProvider.notifier)
+                .addRecent(widget.namespace, q.toTexts());
           },
           onReset: () {
             _toTop();
             _ctrl.run(const QuerySpec());
           },
+          onHistory: _openHistory,
+          onSaveFavorite: _saveFavorite,
         ),
         Divider(height: 1, color: c.border),
         _Toolbar(
@@ -245,6 +321,8 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
           onRefresh: () => _ctrl.refresh(),
           onExport: () =>
               showExportSheet(context, widget.namespace, query: state.query),
+          onExplain: () => _explain(state.query),
+          onExportCode: () => _exportCode(state.query),
         ),
         if (state.loading) _RunningBar(onCancel: _ctrl.cancel),
         Expanded(
@@ -333,6 +411,8 @@ class _Toolbar extends StatelessWidget {
     required this.onNext,
     required this.onRefresh,
     required this.onExport,
+    required this.onExplain,
+    required this.onExportCode,
   });
 
   final DocumentsState state;
@@ -346,6 +426,8 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onNext;
   final VoidCallback onRefresh;
   final VoidCallback onExport;
+  final VoidCallback onExplain;
+  final VoidCallback onExportCode;
 
   @override
   Widget build(BuildContext context) {
@@ -394,6 +476,39 @@ class _Toolbar extends StatelessWidget {
                 ],
                 selected: {view},
                 onSelectionChanged: (s) => onView(s.first),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'More actions',
+                icon: const Icon(Icons.more_vert),
+                onSelected: (v) => switch (v) {
+                  'explain' => onExplain(),
+                  'code' => onExportCode(),
+                  'export' => onExport(),
+                  _ => null,
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(
+                    value: 'explain',
+                    child: ListTile(
+                      leading: Icon(Icons.query_stats),
+                      title: Text('Explain plan'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'code',
+                    child: ListTile(
+                      leading: Icon(Icons.code),
+                      title: Text('Export query to language'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'export',
+                    child: ListTile(
+                      leading: Icon(Icons.file_download_outlined),
+                      title: Text('Export data'),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

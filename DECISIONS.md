@@ -46,6 +46,12 @@ One line per decision: what was decided and why.
 - Query bar assistance uses a chip row under the input rather than a dropdown overlay, because a dropdown fights the on-screen keyboard on phones; chips sit in a TextFieldTapRegion so tapping one keeps the keyboard up.
 - Field suggestions come from a 200-document `$sample` (5 s limit, failures ignored) merged with the fields on the current page; arrays are looked through so `items.sku` is suggested, matching how MongoDB queries dotted paths.
 - Auto-closing only reacts to single-character edits at the cursor; pastes and keyboard word replacements pass through untouched, so it can't corrupt input it doesn't understand.
+- A skip or a collation turns keyset paging off (skip/limit instead): a collation can change how string `_id`s compare, so `_id > last` would no longer match the sort order.
+- The hint input takes an index name or a key pattern (`{ a: 1 }`), detected by a leading `{`.
+- History (last 30 per collection) and favourites are stored in secure storage keyed by connection id and namespace, because queries can contain the same sensitive values as the data.
+- The explain summary prefers executed stages (with counts) and falls back to the planner's tree for the slot-based engine, whose executed stages have internal names; parsing is tested against explain output captured from MongoDB 7.0.
+- Generated code never includes the user's connection string (a `<connection string>` placeholder instead). The mongosh, Python, Node.js, Go and Java output was compiled/run against MongoDB 7 with the official drivers (pymongo 4.19, node driver 6.21, Go driver v2, Java sync driver 5.2); C# could not be compiled in the sandbox. Collation in Java/C#/Go covers locale and strength (plus caseLevel/numericOrdering in Java).
+- Ligatures are turned off in the monospace font so `!=` and `=>` show as typed.
 
 ## Blockers and fallbacks
 
