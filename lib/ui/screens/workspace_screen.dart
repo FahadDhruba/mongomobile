@@ -13,6 +13,7 @@ import 'edit_view_screen.dart';
 import 'export_sheet.dart';
 import 'explorer_drawer.dart';
 import 'overview_screens.dart';
+import 'server_activity_screen.dart';
 import 'settings_screen.dart';
 
 /// The connected workspace. The drawer picks a database or collection and
@@ -217,6 +218,13 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                     createCollectionFlow(context, ref, db: selection.db);
                   case 'dropDb':
                     dropDatabaseFlow(context, ref, selection.db!);
+                  case 'activity':
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const ServerActivityScreen(),
+                      ),
+                    );
                   case 'settings':
                     Navigator.push(
                       context,
@@ -271,6 +279,10 @@ class _WorkspaceScreenState extends ConsumerState<WorkspaceScreen> {
                   ),
                   const PopupMenuDivider(),
                 ],
+                const PopupMenuItem(
+                  value: 'activity',
+                  child: Text('Server activity'),
+                ),
                 const PopupMenuItem(value: 'settings', child: Text('Settings')),
                 const PopupMenuItem(
                   value: 'disconnect',

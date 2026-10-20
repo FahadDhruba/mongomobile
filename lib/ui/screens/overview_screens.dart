@@ -7,6 +7,7 @@ import '../../theme/app_theme.dart';
 import '../../util/format.dart';
 import '../widgets/common.dart';
 import 'collection_admin.dart';
+import 'server_activity_screen.dart';
 
 /// Shown right after connecting: the server and its databases.
 class ServerOverview extends ConsumerWidget {
@@ -60,6 +61,21 @@ class ServerOverview extends ConsumerWidget {
                     fact('Members', server.members.join('\n')),
                   if (server.roundTrip != null)
                     fact('Round trip', formatDuration(server.roundTrip!)),
+                  const SizedBox(height: 6),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextButton.icon(
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                      onPressed: () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const ServerActivityScreen(),
+                        ),
+                      ),
+                      icon: const Icon(Icons.monitor_heart_outlined, size: 18),
+                      label: const Text('Server activity'),
+                    ),
+                  ),
                 ],
               ),
             ),

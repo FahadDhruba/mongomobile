@@ -833,6 +833,96 @@ void main() {
     expect(created['collation'], {'locale': 'en', 'strength': 2});
   });
 
+  testWidgets('server activity', (tester) async {
+    final data = sampleData();
+    data['shop']!['system.profile'] = [
+      {
+        'op': 'query',
+        'ns': 'shop.orders',
+        'millis': 412,
+        'planSummary': 'COLLSCAN',
+        'docsExamined': 40,
+        'nreturned': 1,
+        'ts': DateTime.utc(2026, 1, 2),
+        'command': {'find': 'orders', 'filter': {'total': 99}},
+      },
+    ];
+    final client = FakeMongoClient(data);
+    var tick = 0;
+    client.onCommand = (db, cmd) {
+      if (cmd.containsKey('serverStatus')) {
+        tick++;
+        return {
+          'opcounters': {'query': 100 + tick * 20, 'insert': tick * 4},
+          'connections': {'current': 7, 'available': 800},
+          'network': {'bytesIn': tick * 2048, 'bytesOut': tick * 4096},
+          'mem': {'resident': 256},
+          'localTime': DateTime.utc(2026).add(Duration(seconds: tick * 2)),
+        };
+      }
+      if (cmd['aggregate'] == 1) {
+        return {
+          'cursor': {
+            'firstBatch': [
+              {
+                'opid': 4242,
+                'op': 'query',
+                'ns': 'shop.orders',
+                'client': '10.0.0.5:51234',
+                'appName': 'reporting',
+                'secs_running': 75,
+                'planSummary': 'COLLSCAN',
+                'command': {'find': 'orders', 'filter': {'x': 1}},
+              },
+            ],
+          },
+        };
+      }
+      if (cmd['profile'] == -1) return {'was': 1, 'slowms': 100};
+      return null;
+    };
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Server activity'));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('Operations per second'), findsOneWidget);
+    expect(find.text('12'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
+    await shot(tester, '25-activity');
+
+    await tester.tap(find.text('Operations'));
+    await tester.pumpAndSettle();
+    expect(find.text('1m 15s'), findsOneWidget);
+    expect(find.textContaining('reporting'), findsOneWidget);
+    await tester.tap(find.byTooltip('Kill operation'));
+    await tester.pumpAndSettle();
+    expect(find.text('Turn on write mode to kill operations'), findsOneWidget);
+
+    await tester.tap(find.text('Slow queries'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Choose a database'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('shop').last);
+    await tester.pumpAndSettle();
+    expect(find.text('412 ms'), findsOneWidget);
+    expect(find.textContaining('Profiling operations slower than 100 ms'),
+        findsOneWidget);
+    await shot(tester, '25b-slow-queries');
+
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

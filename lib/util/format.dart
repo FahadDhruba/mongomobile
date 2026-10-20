@@ -42,6 +42,13 @@ String formatBytes(int? bytes) {
 }
 
 /// `1234` ms → `1.23 s`, `85` → `85 ms`.
+/// A running time like "850 ms", "12.3 s", "1m 15s" or "2h 5m".
+String formatElapsed(Duration d) {
+  if (d.inSeconds < 60) return formatDuration(d);
+  if (d.inHours == 0) return '${d.inMinutes}m ${d.inSeconds % 60}s';
+  return '${d.inHours}h ${d.inMinutes % 60}m';
+}
+
 String formatDuration(Duration d) {
   final ms = d.inMilliseconds;
   if (ms < 1000) return '$ms ms';
