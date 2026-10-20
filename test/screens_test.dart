@@ -334,6 +334,89 @@ void main() {
     expect(orders[1].containsKey('orderNo'), isFalse);
   });
 
+  testWidgets('bulk update and delete', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore()
+      ..saved = [
+        const ConnectionProfile(id: 'a', name: 'Local dev', uri: 'mongodb://localhost'),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(
+        of: find.byType(Drawer), matching: find.text('shop')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('orders'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).first, '{ paid: true }');
+    await tester.tap(find.text('Find'));
+    await tester.pumpAndSettle();
+
+    // Read-only: the bulk actions are disabled.
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update documents…'));
+    await tester.pumpAndSettle();
+    expect(find.text('Update documents'), findsNothing);
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update documents…'));
+    await tester.pumpAndSettle();
+    expect(find.text('20 documents match'), findsOneWidget);
+    await tester.enterText(
+      find.byType(TextField),
+      r"{ $set: { status: 'shipped' }, $inc: { version: 1 } }",
+    );
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    expect(find.text('Changes: version, status'), findsWidgets);
+    await shot(tester, '17-bulk-update');
+    await tester.tap(find.text('Update 20 documents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Updated 20 of 20 matching documents'), findsOneWidget);
+    final orders = client.data['shop']!['orders']!;
+    expect(orders.where((d) => d['status'] == 'shipped').length, 20);
+    expect(orders[0]['version'], const BsonLong(4));
+    expect(orders[1]['version'], const BsonLong(4));
+
+    // A bad update is caught before it is sent.
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update documents…'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), "{ status: 'x' }");
+    await tester.pump(const Duration(milliseconds: 600));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('is not an update operator'), findsOneWidget);
+    await tester.pageBack();
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('More actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete documents…'));
+    await tester.pumpAndSettle();
+    await shot(tester, '18-bulk-delete');
+    await tester.tap(find.text('Delete 20 documents'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Deleted 20 documents'), findsOneWidget);
+    expect(orders.length, 20);
+    expect(orders.every((d) => d['paid'] == false), isTrue);
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()

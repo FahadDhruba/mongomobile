@@ -4,6 +4,7 @@ import 'package:mongomobile/services/query_library.dart';
 import 'package:mongomobile/services/settings_store.dart';
 import 'package:mongomobile/models/connection_profile.dart';
 import 'package:mongo_wire/mongo_wire.dart';
+import 'package:mongomobile/services/update_preview.dart';
 
 /// An in-memory [MongoClient] for tests. It understands the small subset of
 /// query syntax the app itself generates: equality, `$gt`/`$gte`/`$lt`/
@@ -331,14 +332,8 @@ class FakeMongoClient implements MongoClient {
   }
 
   Map<String, dynamic> _applySet(Map<String, dynamic> d, Object update) {
-    if (update is Map &&
-        update.keys.every((k) => k == r'$set' || k == r'$unset')) {
-      final out = {...d};
-      (update[r'$set'] as Map? ?? {}).forEach((k, v) => out['$k'] = v);
-      (update[r'$unset'] as Map? ?? {}).forEach((k, _) => out.remove('$k'));
-      return out;
-    }
-    throw UnsupportedError('Fake updates only support \$set and \$unset');
+    if (update is Map<String, dynamic>) return applyUpdate(d, update);
+    throw UnsupportedError('Fake updates do not run pipelines');
   }
 
   @override

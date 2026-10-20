@@ -16,6 +16,7 @@ import '../widgets/query_bar.dart';
 import 'document_editor_screen.dart';
 import '../../services/codegen.dart';
 import '../../state/query_library.dart';
+import 'bulk_screens.dart';
 import 'code_export_sheet.dart';
 import 'explain_screen.dart';
 import 'field_edit_sheet.dart';
@@ -266,6 +267,31 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     }
   }
 
+  /// Opens the bulk update or delete screen for the current filter and
+  /// refreshes when it changed something.
+  Future<void> _bulk(QuerySpec q, {required bool delete}) async {
+    final message = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => delete
+            ? BulkDeleteScreen(
+                namespace: widget.namespace,
+                filter: q.filter,
+                filterText: q.filterText,
+              )
+            : BulkUpdateScreen(
+                namespace: widget.namespace,
+                filter: q.filter,
+                filterText: q.filterText,
+              ),
+      ),
+    );
+    if (message == null || !mounted) return;
+    _snack(message);
+    await _ctrl.refresh();
+    ref.invalidate(collectionStatsProvider(widget.namespace));
+  }
+
   Future<void> _delete(Object? id) async {
     final ok = await confirmDialog(
       context,
@@ -359,6 +385,12 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
               showExportSheet(context, widget.namespace, query: state.query),
           onExplain: () => _explain(state.query),
           onExportCode: () => _exportCode(state.query),
+          onBulkUpdate: canWrite
+              ? () => _bulk(state.query, delete: false)
+              : null,
+          onBulkDelete: canWrite
+              ? () => _bulk(state.query, delete: true)
+              : null,
         ),
         if (state.loading) _RunningBar(onCancel: _ctrl.cancel),
         Expanded(
@@ -454,6 +486,8 @@ class _Toolbar extends StatelessWidget {
     required this.onExport,
     required this.onExplain,
     required this.onExportCode,
+    required this.onBulkUpdate,
+    required this.onBulkDelete,
   });
 
   final DocumentsState state;
@@ -469,6 +503,10 @@ class _Toolbar extends StatelessWidget {
   final VoidCallback onExport;
   final VoidCallback onExplain;
   final VoidCallback onExportCode;
+
+  /// Null in read-only mode.
+  final VoidCallback? onBulkUpdate;
+  final VoidCallback? onBulkDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -525,28 +563,49 @@ class _Toolbar extends StatelessWidget {
                   'explain' => onExplain(),
                   'code' => onExportCode(),
                   'export' => onExport(),
+                  'update' => onBulkUpdate?.call(),
+                  'delete' => onBulkDelete?.call(),
                   _ => null,
                 },
-                itemBuilder: (_) => const [
-                  PopupMenuItem(
+                itemBuilder: (_) => [
+                  const PopupMenuItem(
                     value: 'explain',
                     child: ListTile(
                       leading: Icon(Icons.query_stats),
                       title: Text('Explain plan'),
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'code',
                     child: ListTile(
                       leading: Icon(Icons.code),
                       title: Text('Export query to language'),
                     ),
                   ),
-                  PopupMenuItem(
+                  const PopupMenuItem(
                     value: 'export',
                     child: ListTile(
                       leading: Icon(Icons.file_download_outlined),
                       title: Text('Export data'),
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  PopupMenuItem(
+                    value: 'update',
+                    enabled: onBulkUpdate != null,
+                    child: const ListTile(
+                      leading: Icon(Icons.edit_note),
+                      title: Text('Update documents…'),
+                      subtitle: Text('All that match the filter'),
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    enabled: onBulkDelete != null,
+                    child: const ListTile(
+                      leading: Icon(Icons.delete_sweep_outlined),
+                      title: Text('Delete documents…'),
+                      subtitle: Text('All that match the filter'),
                     ),
                   ),
                 ],

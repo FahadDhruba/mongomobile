@@ -254,7 +254,7 @@ Object? _deepCopy(Object? v) => switch (v) {
   Map() => <String, dynamic>{
     for (final e in v.entries) '${e.key}': _deepCopy(e.value),
   },
-  List() => [for (final e in v) _deepCopy(e)],
   Uint8List() => Uint8List.fromList(v),
+  List() => [for (final e in v) _deepCopy(e)],
   _ => v,
 };
