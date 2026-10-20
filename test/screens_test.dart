@@ -923,6 +923,51 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('connection form', (tester) async {
+    final client = FakeMongoClient(sampleData());
+    final store = MemoryConnectionStore();
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('New connection').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextField, 'Name'), 'Atlas');
+    await tester.tap(find.text('Form'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('mongodb+srv'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Host name'), 'cluster0.ab.mongodb.net');
+    await tester.tap(find.text('None'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Username / Password').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.widgetWithText(TextFormField, 'Username'), 'app');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Password'), 'p@ss');
+    await tester.scrollUntilVisible(
+        find.widgetWithText(TextFormField, 'App name'), 200,
+        scrollable: find.byType(Scrollable).first);
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'App name'), 'phone');
+    await tester.pump();
+    await shot(tester, '26-connection-form');
+    expect(find.text('mongodb+srv://app:****@cluster0.ab.mongodb.net/?appName=phone'),
+        findsOneWidget);
+
+    // Back to the string: it holds what the form built.
+    await tester.scrollUntilVisible(find.text('Connection string'), -300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Connection string'));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('Save'), 300,
+        scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+    expect(store.saved.single.uri,
+        'mongodb+srv://app:p%40ss@cluster0.ab.mongodb.net/?appName=phone');
+    expect(store.saved.single.name, 'Atlas');
+  });
+
   testWidgets('export to a file and drop a collection', (tester) async {
     final client = FakeMongoClient(sampleData());
     final store = MemoryConnectionStore()
