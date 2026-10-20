@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:mongo_wire/mongo_wire.dart';
 
@@ -78,6 +80,90 @@ class TunnelSettings {
   }
 }
 
+/// Client-side field level encryption: where the data keys are and the
+/// master keys that unlock them.
+class EncryptionSettings {
+  const EncryptionSettings({
+    this.keyVault = 'encryption.__keyVault',
+    this.localKey = '',
+    this.awsAccessKeyId = '',
+    this.awsSecretAccessKey = '',
+    this.awsSessionToken = '',
+  });
+
+  /// `database.collection` of the key vault.
+  final String keyVault;
+
+  /// The 96-byte local master key, base64.
+  final String localKey;
+  final String awsAccessKeyId;
+  final String awsSecretAccessKey;
+  final String awsSessionToken;
+
+  Namespace get keyVaultNamespace {
+    final dot = keyVault.indexOf('.');
+    return dot <= 0
+        ? const Namespace('encryption', '__keyVault')
+        : Namespace(keyVault.substring(0, dot), keyVault.substring(dot + 1));
+  }
+
+  /// Why the settings can't be used, or null.
+  String? get error {
+    if (!RegExp(r'^[^.]+\..+$').hasMatch(keyVault)) {
+      return 'The key vault is database.collection, e.g. encryption.__keyVault';
+    }
+    if (localKey.isEmpty && awsAccessKeyId.isEmpty) {
+      return 'Add a local master key or AWS credentials';
+    }
+    if (localKey.isNotEmpty) {
+      try {
+        if (base64.decode(localKey.trim()).length != 96) {
+          return 'The local master key must be 96 bytes (128 base64 characters)';
+        }
+      } on FormatException {
+        return 'The local master key is not valid base64';
+      }
+    }
+    if (awsAccessKeyId.isNotEmpty && awsSecretAccessKey.isEmpty) {
+      return 'Add the AWS secret access key';
+    }
+    return null;
+  }
+
+  KmsProviders get kmsProviders => KmsProviders(
+    localKey: localKey.isEmpty
+        ? null
+        : Uint8List.fromList(base64.decode(localKey.trim())),
+    aws: awsAccessKeyId.isEmpty
+        ? null
+        : AwsCredentials(
+            awsAccessKeyId,
+            awsSecretAccessKey,
+            awsSessionToken.isEmpty ? null : awsSessionToken,
+          ),
+  );
+
+  Map<String, dynamic> toJson({bool secrets = true}) => {
+    'keyVault': keyVault,
+    if (secrets && localKey.isNotEmpty) 'localKey': localKey,
+    if (awsAccessKeyId.isNotEmpty) 'awsAccessKeyId': awsAccessKeyId,
+    if (secrets && awsSecretAccessKey.isNotEmpty)
+      'awsSecretAccessKey': awsSecretAccessKey,
+    if (secrets && awsSessionToken.isNotEmpty)
+      'awsSessionToken': awsSessionToken,
+  };
+
+  static EncryptionSettings? fromJson(Object? j) => j is! Map
+      ? null
+      : EncryptionSettings(
+          keyVault: j['keyVault'] as String? ?? 'encryption.__keyVault',
+          localKey: j['localKey'] as String? ?? '',
+          awsAccessKeyId: j['awsAccessKeyId'] as String? ?? '',
+          awsSecretAccessKey: j['awsSecretAccessKey'] as String? ?? '',
+          awsSessionToken: j['awsSessionToken'] as String? ?? '',
+        );
+}
+
 /// A saved connection. Stored encrypted, since the URI holds the password.
 class ConnectionProfile {
   const ConnectionProfile({
@@ -93,6 +179,7 @@ class ConnectionProfile {
     this.tunnel,
     this.clientCertificatePem,
     this.clientKeyPassword,
+    this.encryption,
   });
 
   static String newId() {
@@ -122,6 +209,9 @@ class ConnectionProfile {
   /// Client certificate and private key (PEM) for X.509 sign-in.
   final String? clientCertificatePem;
   final String? clientKeyPassword;
+
+  /// Client-side field level encryption, if set up.
+  final EncryptionSettings? encryption;
 
   /// Hosts for display, without credentials.
   String get displayHost {
@@ -195,5 +285,6 @@ class ConnectionProfile {
         tunnel: TunnelSettings.fromJson(j['tunnel']),
         clientCertificatePem: j['clientCertificatePem'] as String?,
         clientKeyPassword: j['clientKeyPassword'] as String?,
+        encryption: EncryptionSettings.fromJson(j['encryption']),
       );
 }

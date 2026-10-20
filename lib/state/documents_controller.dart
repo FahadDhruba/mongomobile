@@ -462,6 +462,27 @@ class DocumentsController extends Notifier<DocumentsState> {
         if (hasNext) docs = docs.sublist(0, s.pageSize);
         if (result.truncated) hasNext = true;
       }
+      final encryption = ref.read(encryptionProvider);
+      var undecrypted = 0;
+      if (encryption != null &&
+          docs.any((d) => _hasEncrypted(d))) {
+        final out = <Map<String, dynamic>>[];
+        for (final d in docs) {
+          final r = await encryption.decryptDocument(d);
+          undecrypted += r.failures.length;
+          out.add(r.document);
+        }
+        if (gen != _generation || !ref.mounted) return;
+        docs = out;
+      }
+      if (undecrypted > 0) {
+        warning = [
+          ?warning,
+          '$undecrypted encrypted value${undecrypted == 1 ? '' : 's'} on '
+              'this page could not be decrypted; check the connection\'s '
+              'encryption keys.',
+        ].join(' ');
+      }
       final ids = [for (final d in docs) d['_id']];
       if (q.hidesId) {
         docs = [for (final d in docs) {...d}..remove('_id')];
@@ -552,4 +573,11 @@ class DocumentsController extends Notifier<DocumentsState> {
 final documentsProvider = NotifierProvider.autoDispose
     .family<DocumentsController, DocumentsState, Namespace>(
         DocumentsController.new,
-        dependencies: [clientProvider]);
+        dependencies: [clientProvider, encryptionProvider]);
+
+/// Whether [v] holds a client-side encrypted value anywhere inside.
+bool _hasEncrypted(Object? v) => switch (v) {
+      Map() => v.values.any(_hasEncrypted),
+      List() => v.any(_hasEncrypted),
+      _ => isEncryptedValue(v),
+    };

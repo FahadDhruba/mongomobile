@@ -131,7 +131,12 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> _openEditor(EditorMode mode, String text, {Object? id}) async {
+  Future<void> _openEditor(
+    EditorMode mode,
+    String text, {
+    Object? id,
+    List<EncryptedField> encryptedFields = const [],
+  }) async {
     final saved = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
@@ -140,6 +145,7 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
           namespace: widget.namespace,
           initialText: text,
           originalId: id,
+          encryptedFields: encryptedFields,
         ),
       ),
     );
@@ -222,22 +228,42 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
   Future<void> _edit(Object? id) async {
     final doc = await _fetchFull(id);
     if (doc == null || !mounted) return;
-    await _openEditor(EditorMode.edit, EJson.stringify(doc), id: id);
+    final d = await _decrypt(doc);
+    if (d == null || !mounted) return;
+    await _openEditor(
+      EditorMode.edit,
+      EJson.stringify(d.document),
+      id: id,
+      encryptedFields: d.fields,
+    );
   }
 
   Future<void> _clone(Object? id) async {
     final doc = await _fetchFull(id);
     if (doc == null || !mounted) return;
-    final copy = {...doc}..remove('_id');
-    await _openEditor(EditorMode.clone, EJson.stringify(copy));
+    final d = await _decrypt(doc);
+    if (d == null || !mounted) return;
+    final copy = {...d.document}..remove('_id');
+    await _openEditor(
+      EditorMode.clone,
+      EJson.stringify(copy),
+      encryptedFields: d.fields,
+    );
   }
 
   /// Edits one top-level field from the Table view with `$set`/`$unset`.
   /// The value comes from the full document, since the page may be
   /// projected.
   Future<void> _editField(Object? id, String field) async {
-    final doc = await _fetchFull(id);
-    if (doc == null || !mounted) return;
+    final raw = await _fetchFull(id);
+    if (raw == null || !mounted) return;
+    final d = await _decrypt(raw);
+    if (d == null || !mounted) return;
+    final doc = d.document;
+    final encrypted = d.fields
+        .where((f) => f.path.length == 1 && f.path.single == field)
+        .firstOrNull;
+    final encryption = ref.read(encryptionProvider);
     final client = ref.read(clientProvider);
     Future<String?> write(Map<String, dynamic> update) async {
       try {
@@ -255,8 +281,16 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
       field: field,
       value: doc[field],
       missing: !doc.containsKey(field),
-      onSave: (v) => write({
-        r'$set': {field: v},
+      onSave: (v) async => write({
+        r'$set': {
+          field: encrypted != null && encryption != null
+              ? await encryption.encryptValue(
+                  v,
+                  encrypted.keyId,
+                  deterministic: encrypted.deterministic,
+                )
+              : v,
+        },
       }),
       onRemove: () => write({
         r'$unset': {field: ''},
@@ -305,6 +339,26 @@ class _DocumentsViewState extends ConsumerState<DocumentsView> {
     await _ctrl.refresh();
     ref.invalidate(collectionStatsProvider(widget.namespace));
     if (message != null) _snack(message);
+  }
+
+  /// The document with its encrypted fields decrypted, when field
+  /// encryption is set up; values it cannot decrypt stay as they are.
+  Future<DecryptedDocument?> _decrypt(Map<String, dynamic> doc) async {
+    final encryption = ref.read(encryptionProvider);
+    if (encryption == null) return DecryptedDocument(doc, const [], const {});
+    try {
+      final d = await encryption.decryptDocument(doc);
+      if (d.failures.isNotEmpty) {
+        _snack(
+          '${d.failures.length} encrypted field${d.failures.length == 1 ? '' : 's'} '
+          'could not be decrypted: ${d.failures.values.first}',
+        );
+      }
+      return d;
+    } on Object catch (e) {
+      _snack(describeError(e));
+      return null;
+    }
   }
 
   Future<void> _delete(Object? id) async {

@@ -110,6 +110,7 @@ class Session {
     required this.client,
     this.readOnly = true,
     this.tunnel,
+    this.encryption,
   });
 
   final ConnectionProfile profile;
@@ -117,6 +118,9 @@ class Session {
 
   /// The SSH tunnel or SOCKS5 proxy the client runs over.
   final Tunnel? tunnel;
+
+  /// Decrypts and encrypts client-side encrypted fields, when set up.
+  final FieldEncryption? encryption;
 
   /// Writes are blocked until the user turns on write mode.
   final bool readOnly;
@@ -126,6 +130,7 @@ class Session {
     client: client,
     readOnly: readOnly ?? this.readOnly,
     tunnel: tunnel,
+    encryption: encryption,
   );
 }
 
@@ -136,8 +141,7 @@ class Sessions {
   final List<Session> all;
   final String? activeId;
 
-  Session? byId(String? id) =>
-      all.where((s) => s.profile.id == id).firstOrNull;
+  Session? byId(String? id) => all.where((s) => s.profile.id == id).firstOrNull;
   Session? get active => byId(activeId);
 }
 
@@ -163,10 +167,18 @@ class SessionsNotifier extends Notifier<Sessions> {
       oidc: oidc,
     );
     _oidc = null;
+    final enc = opened.profile.encryption;
     final session = Session(
       profile: opened.profile,
       client: opened.client,
       tunnel: opened.tunnel,
+      encryption: enc == null || enc.error != null
+          ? null
+          : FieldEncryption(
+              client: opened.client,
+              keyVault: enc.keyVaultNamespace,
+              kms: enc.kmsProviders,
+            ),
     );
     state = Sessions([...state.all, session], profile.id);
     final connections = ref.read(connectionsProvider.notifier);
@@ -237,6 +249,12 @@ final clientProvider = Provider<MongoClient>((ref) {
   if (s == null) throw StateError('Not connected');
   return s.client;
 }, dependencies: [sessionProvider]);
+
+/// Field encryption for the connection, if set up.
+final encryptionProvider = Provider<FieldEncryption?>(
+  (ref) => ref.watch(sessionProvider)?.encryption,
+  dependencies: [sessionProvider],
+);
 
 final readOnlyProvider = Provider<bool>(
   (ref) => ref.watch(sessionProvider)?.readOnly ?? true,

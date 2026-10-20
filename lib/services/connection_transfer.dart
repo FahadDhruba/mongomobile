@@ -61,6 +61,9 @@ Future<String> exportConnections(
             if (t.passphrase.isNotEmpty) 'passphrase': t.passphrase,
           },
       'clientCertificatePem': ?p.clientCertificatePem,
+      if (p.encryption case final e?)
+        if (e.localKey.isNotEmpty || e.awsSecretAccessKey.isNotEmpty)
+          'encryption': e.toJson(),
       'clientKeyPassword': ?p.clientKeyPassword,
     };
     if (secret.isNotEmpty) secrets[p.id] = secret;
@@ -84,6 +87,8 @@ Future<String> exportConnections(
       if (p.allowInvalidCertificates) 'allowInvalidCertificates': true,
       if (p.caCertificatePem != null) 'caCertificatePem': p.caCertificatePem,
       if (p.tunnel != null) 'tunnel': p.tunnel!.toJson(secrets: false),
+      if (p.encryption != null)
+        'encryption': p.encryption!.toJson(secrets: false),
     };
   }
   final mm = <String, dynamic>{'version': 1, 'connections': extra};
@@ -197,6 +202,9 @@ Future<ImportedConnections> importConnections(
         allowInvalidCertificates: x['allowInvalidCertificates'] == true,
         caCertificatePem: x['caCertificatePem'] as String?,
         tunnel: tunnel,
+        encryption: EncryptionSettings.fromJson(
+          secret['encryption'] ?? x['encryption'],
+        ),
         clientCertificatePem: secret['clientCertificatePem'] as String?,
         clientKeyPassword: secret['clientKeyPassword'] as String?,
         lastUsed: lastUsed,

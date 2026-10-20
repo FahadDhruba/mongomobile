@@ -11,6 +11,7 @@ import '../../theme/app_theme.dart';
 import '../../util/format.dart';
 import '../widgets/common.dart';
 import '../widgets/connection_form_view.dart';
+import '../widgets/encryption_editor.dart';
 import '../widgets/tunnel_editor.dart';
 
 /// Create or edit a saved connection, as a connection string or as form
@@ -39,6 +40,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     text: widget.profile?.clientKeyPassword ?? '',
   );
   late TunnelSettings? _tunnel = widget.profile?.tunnel;
+  late EncryptionSettings? _encryption = widget.profile?.encryption;
   late bool _allowInvalid = widget.profile?.allowInvalidCertificates ?? false;
   late int _color = widget.profile?.colorIndex ?? 0;
   bool _showUri = false;
@@ -108,6 +110,10 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
       );
       return false;
     }
+    if (_encryption?.error case final e?) {
+      setState(() => _uriError = e);
+      return false;
+    }
     if (t != null && t.kind == TunnelKind.ssh && t.username.isEmpty) {
       setState(() => _uriError = 'Enter the SSH user');
       return false;
@@ -133,6 +139,7 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
     favorite: widget.profile?.favorite ?? false,
     group: widget.profile?.group ?? '',
     tunnel: _tunnel,
+    encryption: _encryption,
     clientCertificatePem: _clientCert.text.trim().isEmpty
         ? null
         : _clientCert.text.trim(),
@@ -345,6 +352,22 @@ class _ConnectionEditScreenState extends ConsumerState<ConnectionEditScreen> {
                     ),
                   ),
                   const SizedBox(height: 8),
+                ],
+              ),
+            ),
+            Theme(
+              data: Theme.of(
+                context,
+              ).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                title: const Text('In-use encryption'),
+                initiallyExpanded: _encryption != null,
+                children: [
+                  EncryptionEditor(
+                    initial: _encryption,
+                    onChanged: (e) => setState(() => _encryption = e),
+                  ),
                 ],
               ),
             ),

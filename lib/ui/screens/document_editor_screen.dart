@@ -22,6 +22,7 @@ class DocumentEditorScreen extends ConsumerStatefulWidget {
     required this.namespace,
     required this.initialText,
     this.originalId,
+    this.encryptedFields = const [],
   });
 
   final EditorMode mode;
@@ -30,6 +31,10 @@ class DocumentEditorScreen extends ConsumerStatefulWidget {
 
   /// The `_id` of the document being edited.
   final Object? originalId;
+
+  /// Fields that were decrypted for editing; they are encrypted again, with
+  /// the same key and algorithm, before saving.
+  final List<EncryptedField> encryptedFields;
 
   @override
   ConsumerState<DocumentEditorScreen> createState() =>
@@ -134,6 +139,12 @@ class _DocumentEditorScreenState extends ConsumerState<DocumentEditorScreen> {
     }
   }
 
+  Future<Map<String, dynamic>> _encrypt(Map<String, dynamic> doc) async {
+    final encryption = ref.read(encryptionProvider);
+    if (encryption == null || widget.encryptedFields.isEmpty) return doc;
+    return encryption.reencrypt(doc, widget.encryptedFields);
+  }
+
   Future<void> _submit() async {
     final docs = _parse();
     if (docs == null) {
@@ -150,7 +161,7 @@ class _DocumentEditorScreenState extends ConsumerState<DocumentEditorScreen> {
         case EditorMode.insert:
         case EditorMode.clone:
           for (final d in docs) {
-            await client.insertOne(widget.namespace, d);
+            await client.insertOne(widget.namespace, await _encrypt(d));
           }
         case EditorMode.edit:
           var doc = docs.single;
@@ -164,7 +175,7 @@ class _DocumentEditorScreenState extends ConsumerState<DocumentEditorScreen> {
           }
           final r = await client.replaceOne(widget.namespace, {
             '_id': widget.originalId,
-          }, doc);
+          }, await _encrypt(doc));
           if (r.matched == 0) {
             throw const FormatException(
               'The document no longer exists; it may have been deleted.',

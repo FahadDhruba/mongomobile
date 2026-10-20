@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -1221,6 +1222,76 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Staging'), findsWidgets);
     expect(find.text('+1'), findsNothing);
+  });
+
+  testWidgets('encrypted fields are decrypted and encrypted again on save',
+      (tester) async {
+    final fixture = jsonDecode(
+        File('test/fixtures/fle_local.json').readAsStringSync()) as Map;
+    final keyDoc = EJson.parseDocument(jsonEncode(fixture['keyDoc']));
+    final values = (fixture['values'] as Map).cast<String, Map>();
+    BsonBinary cipher(String name) =>
+        BsonBinary(6, base64.decode(values[name]!['cipher'] as String));
+    final client = FakeMongoClient({
+      'encryption': {
+        '__keyVault': [keyDoc],
+      },
+      'hr': {
+        'people': [
+          {'_id': 1, 'name': cipher('str.Deterministic'), 'age': cipher('int.Random')},
+        ],
+      },
+    });
+    final store = MemoryConnectionStore()
+      ..saved = [
+        ConnectionProfile(
+          id: 'a',
+          name: 'Local dev',
+          uri: 'mongodb://localhost',
+          encryption: EncryptionSettings(localKey: fixture['master'] as String),
+        ),
+      ];
+    await pumpApp(tester, client, store);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Local dev'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Open navigation menu'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of: find.byType(Drawer), matching: find.text('hr')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('people'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Ada Lovelace', findRichText: true), findsOneWidget);
+    expect(find.textContaining('42', findRichText: true), findsWidgets);
+
+    await tester.tap(find.text('Read-only'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Allow writes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Edit').first);
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    final editor = find.byType(TextField).last;
+    final text = tester.widget<TextField>(editor).controller!.text;
+    expect(text, contains('"Ada Lovelace"'));
+    await tester.enterText(editor, text.replaceFirst('Ada Lovelace', 'Grace'));
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.tap(find.text('Update'));
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 300)));
+    await tester.pumpAndSettle();
+    final saved = client.data['hr']!['people']!.single;
+    expect(saved['name'], isA<BsonBinary>());
+    expect((saved['name'] as BsonBinary).subtype, 6);
+    expect((saved['age'] as BsonBinary).subtype, 6);
+    final fle = FieldEncryption(
+      client: client,
+      keyVault: const Namespace('encryption', '__keyVault'),
+      kms: KmsProviders(localKey: base64.decode(fixture['master'] as String)),
+    );
+    final back = await tester.runAsync(() => fle.decryptDocument(saved));
+    expect(back!.document['name'], 'Grace');
+    expect(back.document['age'], 42);
   });
 
   testWidgets('export to a file and drop a collection', (tester) async {
