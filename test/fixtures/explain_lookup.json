@@ -1,0 +1,200 @@
+{
+  "explainVersion": "1",
+  "stages": [
+    {
+      "$cursor": {
+        "queryPlanner": {
+          "namespace": "fx_explain.orders",
+          "indexFilterSet": false,
+          "parsedQuery": {
+            "status": {
+              "$eq": "paid"
+            }
+          },
+          "queryHash": "9BAD7CDC",
+          "planCacheKey": "5EDEF465",
+          "optimizationTimeMillis": {"$numberInt": "0"},
+          "maxIndexedOrSolutionsReached": false,
+          "maxIndexedAndSolutionsReached": false,
+          "maxScansToExplodeReached": false,
+          "winningPlan": {
+            "stage": "PROJECTION_SIMPLE",
+            "transformBy": {
+              "_id": {"$numberInt": "1"},
+              "customer": {"$numberInt": "1"}
+            },
+            "inputStage": {
+              "stage": "FETCH",
+              "inputStage": {
+                "stage": "IXSCAN",
+                "keyPattern": {
+                  "status": {"$numberInt": "1"}
+                },
+                "indexName": "status_1",
+                "isMultiKey": false,
+                "multiKeyPaths": {
+                  "status": []
+                },
+                "isUnique": false,
+                "isSparse": false,
+                "isPartial": false,
+                "indexVersion": {"$numberInt": "2"},
+                "direction": "forward",
+                "indexBounds": {
+                  "status": [
+                    "[\"paid\", \"paid\"]"
+                  ]
+                }
+              }
+            }
+          },
+          "rejectedPlans": []
+        },
+        "executionStats": {
+          "executionSuccess": true,
+          "nReturned": {"$numberInt": "100"},
+          "executionTimeMillis": {"$numberInt": "27"},
+          "totalKeysExamined": {"$numberInt": "100"},
+          "totalDocsExamined": {"$numberInt": "100"},
+          "executionStages": {
+            "stage": "PROJECTION_SIMPLE",
+            "nReturned": {"$numberInt": "100"},
+            "executionTimeMillisEstimate": {"$numberInt": "0"},
+            "works": {"$numberInt": "101"},
+            "advanced": {"$numberInt": "100"},
+            "needTime": {"$numberInt": "0"},
+            "needYield": {"$numberInt": "0"},
+            "saveState": {"$numberInt": "1"},
+            "restoreState": {"$numberInt": "1"},
+            "isEOF": {"$numberInt": "1"},
+            "transformBy": {
+              "_id": {"$numberInt": "1"},
+              "customer": {"$numberInt": "1"}
+            },
+            "inputStage": {
+              "stage": "FETCH",
+              "nReturned": {"$numberInt": "100"},
+              "executionTimeMillisEstimate": {"$numberInt": "0"},
+              "works": {"$numberInt": "101"},
+              "advanced": {"$numberInt": "100"},
+              "needTime": {"$numberInt": "0"},
+              "needYield": {"$numberInt": "0"},
+              "saveState": {"$numberInt": "1"},
+              "restoreState": {"$numberInt": "1"},
+              "isEOF": {"$numberInt": "1"},
+              "docsExamined": {"$numberInt": "100"},
+              "alreadyHasObj": {"$numberInt": "0"},
+              "inputStage": {
+                "stage": "IXSCAN",
+                "nReturned": {"$numberInt": "100"},
+                "executionTimeMillisEstimate": {"$numberInt": "0"},
+                "works": {"$numberInt": "101"},
+                "advanced": {"$numberInt": "100"},
+                "needTime": {"$numberInt": "0"},
+                "needYield": {"$numberInt": "0"},
+                "saveState": {"$numberInt": "1"},
+                "restoreState": {"$numberInt": "1"},
+                "isEOF": {"$numberInt": "1"},
+                "keyPattern": {
+                  "status": {"$numberInt": "1"}
+                },
+                "indexName": "status_1",
+                "isMultiKey": false,
+                "multiKeyPaths": {
+                  "status": []
+                },
+                "isUnique": false,
+                "isSparse": false,
+                "isPartial": false,
+                "indexVersion": {"$numberInt": "2"},
+                "direction": "forward",
+                "indexBounds": {
+                  "status": [
+                    "[\"paid\", \"paid\"]"
+                  ]
+                },
+                "keysExamined": {"$numberInt": "100"},
+                "seeks": {"$numberInt": "1"},
+                "dupsTested": {"$numberInt": "0"},
+                "dupsDropped": {"$numberInt": "0"}
+              }
+            }
+          }
+        }
+      },
+      "nReturned": {"$numberLong": "100"},
+      "executionTimeMillisEstimate": {"$numberLong": "0"}
+    },
+    {
+      "$lookup": {
+        "from": "orders",
+        "as": "x",
+        "localField": "customer",
+        "foreignField": "customer"
+      },
+      "totalDocsExamined": {"$numberLong": "50000"},
+      "totalKeysExamined": {"$numberLong": "0"},
+      "collectionScans": {"$numberLong": "100"},
+      "indexesUsed": [],
+      "nReturned": {"$numberLong": "100"},
+      "executionTimeMillisEstimate": {"$numberLong": "26"}
+    },
+    {
+      "$project": {
+        "_id": true,
+        "n": {
+          "$size": [
+            "$x"
+          ]
+        }
+      },
+      "nReturned": {"$numberLong": "100"},
+      "executionTimeMillisEstimate": {"$numberLong": "26"}
+    }
+  ],
+  "serverInfo": {
+    "host": "0c713cc3b469",
+    "port": {"$numberInt": "27017"},
+    "version": "7.0.45",
+    "gitVersion": "a52313e13ab55c9bddf7c3ff91dab286fa381796"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": {"$numberInt": "104857600"},
+    "internalQueryFacetMaxOutputDocSizeBytes": {"$numberInt": "104857600"},
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": {"$numberInt": "104857600"},
+    "internalDocumentSourceGroupMaxMemoryBytes": {"$numberInt": "104857600"},
+    "internalQueryMaxBlockingSortMemoryUsageBytes": {"$numberInt": "104857600"},
+    "internalQueryProhibitBlockingMergeOnMongoS": {"$numberInt": "0"},
+    "internalQueryMaxAddToSetBytes": {"$numberInt": "104857600"},
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": {"$numberInt": "104857600"},
+    "internalQueryFrameworkControl": "forceClassicEngine"
+  },
+  "command": {
+    "aggregate": "orders",
+    "pipeline": [
+      {
+        "$match": {
+          "status": "paid"
+        }
+      },
+      {
+        "$lookup": {
+          "from": "orders",
+          "localField": "customer",
+          "foreignField": "customer",
+          "as": "x"
+        }
+      },
+      {
+        "$project": {
+          "n": {
+            "$size": "$x"
+          }
+        }
+      }
+    ],
+    "cursor": {},
+    "$db": "fx_explain"
+  },
+  "ok": {"$numberDouble": "1.0"}
+}

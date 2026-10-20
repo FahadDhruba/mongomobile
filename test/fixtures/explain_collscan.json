@@ -1,0 +1,79 @@
+{
+  "explainVersion": "1",
+  "queryPlanner": {
+    "namespace": "fx_explain.orders",
+    "indexFilterSet": false,
+    "parsedQuery": {
+      "customer": {
+        "$eq": "c3"
+      }
+    },
+    "queryHash": "08996ADF",
+    "planCacheKey": "08996ADF",
+    "optimizationTimeMillis": {"$numberInt": "0"},
+    "maxIndexedOrSolutionsReached": false,
+    "maxIndexedAndSolutionsReached": false,
+    "maxScansToExplodeReached": false,
+    "winningPlan": {
+      "stage": "COLLSCAN",
+      "filter": {
+        "customer": {
+          "$eq": "c3"
+        }
+      },
+      "direction": "forward"
+    },
+    "rejectedPlans": []
+  },
+  "executionStats": {
+    "executionSuccess": true,
+    "nReturned": {"$numberInt": "13"},
+    "executionTimeMillis": {"$numberInt": "0"},
+    "totalKeysExamined": {"$numberInt": "0"},
+    "totalDocsExamined": {"$numberInt": "500"},
+    "executionStages": {
+      "stage": "COLLSCAN",
+      "filter": {
+        "customer": {
+          "$eq": "c3"
+        }
+      },
+      "nReturned": {"$numberInt": "13"},
+      "executionTimeMillisEstimate": {"$numberInt": "0"},
+      "works": {"$numberInt": "501"},
+      "advanced": {"$numberInt": "13"},
+      "needTime": {"$numberInt": "487"},
+      "needYield": {"$numberInt": "0"},
+      "saveState": {"$numberInt": "0"},
+      "restoreState": {"$numberInt": "0"},
+      "isEOF": {"$numberInt": "1"},
+      "direction": "forward",
+      "docsExamined": {"$numberInt": "500"}
+    }
+  },
+  "command": {
+    "find": "orders",
+    "filter": {
+      "customer": "c3"
+    },
+    "$db": "fx_explain"
+  },
+  "serverInfo": {
+    "host": "0c713cc3b469",
+    "port": {"$numberInt": "27017"},
+    "version": "7.0.45",
+    "gitVersion": "a52313e13ab55c9bddf7c3ff91dab286fa381796"
+  },
+  "serverParameters": {
+    "internalQueryFacetBufferSizeBytes": {"$numberInt": "104857600"},
+    "internalQueryFacetMaxOutputDocSizeBytes": {"$numberInt": "104857600"},
+    "internalLookupStageIntermediateDocumentMaxSizeBytes": {"$numberInt": "104857600"},
+    "internalDocumentSourceGroupMaxMemoryBytes": {"$numberInt": "104857600"},
+    "internalQueryMaxBlockingSortMemoryUsageBytes": {"$numberInt": "104857600"},
+    "internalQueryProhibitBlockingMergeOnMongoS": {"$numberInt": "0"},
+    "internalQueryMaxAddToSetBytes": {"$numberInt": "104857600"},
+    "internalDocumentSourceSetWindowFieldsMaxMemoryBytes": {"$numberInt": "104857600"},
+    "internalQueryFrameworkControl": "forceClassicEngine"
+  },
+  "ok": {"$numberDouble": "1.0"}
+}
