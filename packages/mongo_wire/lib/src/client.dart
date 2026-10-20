@@ -1,4 +1,6 @@
 import 'cancel.dart';
+import 'wire/oidc.dart';
+import 'wire/tunnel.dart';
 
 /// A database and collection name.
 final class Namespace {
@@ -364,10 +366,26 @@ final class ConnectOptions {
     this.allowInvalidCertificates = false,
     this.appName = 'MongoMobile',
     this.poolSize = 4,
+    this.tunnel,
+    this.clientCertificatePem,
+    this.clientKeyPassword,
+    this.oidcCallback,
   });
 
   /// Extra trusted CA certificates in PEM format.
   final String? caCertificatePem;
+
+  /// Routes connections through an SSH tunnel or SOCKS5 proxy. The caller
+  /// owns it and closes it after the client.
+  final Tunnel? tunnel;
+
+  /// Certificate and private key (PEM) for X.509 sign-in.
+  final String? clientCertificatePem;
+  final String? clientKeyPassword;
+
+  /// Gets an access token for MONGODB-OIDC sign-in from the identity
+  /// provider the server names.
+  final OidcCallback? oidcCallback;
 
   /// Accept any TLS certificate, in addition to the URI's own option.
   final bool allowInvalidCertificates;

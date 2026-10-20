@@ -49,21 +49,21 @@ class WireMongoClient implements MongoClient {
     final resolver = dns ?? DohResolver();
     // Resolve SRV first: its TXT record can set authSource.
     final resolved = await resolveConnectionString(cs, resolver);
+    if (cs.authMechanism == 'GSSAPI') {
+      throw MongoConfigError(
+        'Kerberos (GSSAPI) sign-in is not supported: Android has no '
+        'Kerberos library for it.',
+      );
+    }
     final ho = HandshakeOptions(
       username: resolved.username,
       password: resolved.password,
       authSource: resolved.authSource,
       authMechanism: resolved.authMechanism,
       appName: resolved.appName ?? options.appName,
+      mechanismProperties: resolved.authMechanismProperties,
+      oidcCallback: options.oidcCallback,
     );
-    if (cs.authMechanism == 'MONGODB-X509' ||
-        cs.authMechanism == 'GSSAPI' ||
-        cs.authMechanism == 'MONGODB-AWS' ||
-        cs.authMechanism == 'MONGODB-OIDC') {
-      throw MongoConfigError(
-        'authMechanism=${cs.authMechanism} is not supported yet',
-      );
-    }
     final selected = await _discover(resolved, options, resolver, ho);
     final server = await _serverInfo(selected);
     return WireMongoClient._(cs, options, resolver, ho, selected, server);
@@ -82,10 +82,13 @@ class WireMongoClient implements MongoClient {
           resolved.tlsAllowInvalidCertificates ||
           options.allowInvalidCertificates,
       caCertificatePem: options.caCertificatePem,
+      clientCertificatePem: options.clientCertificatePem,
+      clientKeyPassword: options.clientKeyPassword,
     ),
     handshakeOptions: ho,
     dns: dns,
     poolSize: options.poolSize,
+    tunnel: options.tunnel,
   );
 
   static Future<ServerInfo> _serverInfo(SelectedServer s) async {

@@ -216,13 +216,32 @@ final class ConnectionString {
   String get authSource {
     final explicit = options['authsource'];
     if (explicit != null && explicit.isNotEmpty) return explicit;
-    if (authMechanism == 'PLAIN' || authMechanism == 'MONGODB-X509') {
+    if (const {
+      'PLAIN',
+      'MONGODB-X509',
+      'MONGODB-AWS',
+      'MONGODB-OIDC',
+      'GSSAPI',
+    }.contains(authMechanism)) {
       return r'$external';
     }
     return database ?? 'admin';
   }
 
   String? get appName => options['appname'];
+
+  /// `authMechanismProperties=KEY:value,KEY2:value2`.
+  Map<String, String> get authMechanismProperties {
+    final raw = options['authmechanismproperties'];
+    if (raw == null || raw.isEmpty) return const {};
+    return {
+      for (final pair in raw.split(','))
+        if (pair.contains(':'))
+          pair.substring(0, pair.indexOf(':')).trim(): pair
+              .substring(pair.indexOf(':') + 1)
+              .trim(),
+    };
+  }
 
   String get readPreference => options['readpreference'] ?? 'primary';
 

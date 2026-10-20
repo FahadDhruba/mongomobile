@@ -11,5 +11,8 @@ export 'src/errors.dart';
 export 'src/wire/connection_string.dart' show ConnectionString, HostAddress;
 export 'src/wire/scram.dart'
     show ScramConversation, ScramMechanism, pbkdf2, saslPrep;
+export 'src/wire/aws.dart';
+export 'src/wire/oidc.dart';
 export 'src/wire/srv.dart';
+export 'src/wire/tunnel.dart';
 export 'src/wire_client.dart';
