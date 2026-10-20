@@ -116,7 +116,8 @@ void main() {
         const ImportOptions(format: ImportFormat.json, stopOnError: true),
       );
       expect(r.failed, 1);
-      expect(docs, isEmpty);
+      expect(r.inserted, 1);
+      expect(docs.map((d) => d['a']), [1]);
     });
 
     test('duplicate _id errors come back per document', () async {

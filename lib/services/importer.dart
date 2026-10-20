@@ -631,7 +631,13 @@ class Importer {
       if (cancel?.isCancelled ?? false) throw MongoCancelledError();
       await _flush();
     } on _Stop {
-      // Stopped at the first error, as asked.
+      // Stopped at the first error, as asked. Documents read before it
+      // still go in, as with an ordered insert.
+      try {
+        await _flush();
+      } on _Stop {
+        // The flush hit an insert error; it is already counted.
+      }
     } on MongoCancelledError {
       cancelled = true;
     }
