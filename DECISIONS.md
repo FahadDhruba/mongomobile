@@ -57,6 +57,13 @@ One line per decision: what was decided and why.
 - Pipeline results page with an appended `$skip`/`$limit` (20 per page); aggregation output has no stable key for keyset paging.
 - Editing a view runs the builder on the view's source collection and saves with `collMod {viewOn, pipeline}`; it requires write mode like other changes.
 - Each collection tab's state (query, page, pipeline) is kept alive while the collection is open, so switching tabs no longer resets the Documents query.
+- The field editor works on a tree of typed text (`FieldNode`) and converts to BSON only on save or on switching to JSON, so half-typed values never lose their type; binary, regex, timestamp and other rare types are shown read-only and kept as they are.
+- Inline table edits fetch the full document first (the page may be projected) and write one top-level field with `$set`/`$unset`; dotted or `$` field names are left to the document editor, since `$set` would read them as paths.
+- Bulk update previews are simulated on the phone for `$set`, `$unset`, `$inc`, `$mul`, `$rename`, `$currentDate`, `$push`/`$addToSet` (with `$each`), `$pull` (plain values) and `$pop`, applying paths in lexicographic order like MongoDB 5+; the simulator is checked field-for-field against a real mongo:7. Anything else (`$min`, positional paths, `$pull` conditions) says "no preview" and still runs on the server. Pipeline updates are previewed by running the stages in an aggregation on the sample. Compass previews inside an aborted transaction instead, which needs a replica set.
+- Bulk update/delete use only the query's filter (not skip, limit, sort or collation), as Compass does, and show the exact match count before asking.
+- Import reads the picked file through a new `ACTION_OPEN_DOCUMENT` channel in 256 KB chunks, so files larger than memory work; JSON is split into documents by a bracket-counting scanner (which handles strings and both quote styles) before each is parsed.
+- Import inserts unordered batches of 1,000 by default, so one bad document doesn't stop the rest; "Stop on the first error" switches to ordered inserts. Only the first 50 errors are kept for display.
+- CSV column types are guessed from the first 64 KB (ObjectId, Boolean, Int32, Int64, Double, Date, JSON, else String) and can be changed per column; empty cells are left out by default. Headers like `items[0].sku` rebuild arrays, so a CSV export imports back to the same documents (tested).
 
 ## Blockers and fallbacks
 

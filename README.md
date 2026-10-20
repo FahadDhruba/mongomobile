@@ -89,6 +89,22 @@ removes saved connections.
   or an array), edit and clone; delete asks for confirmation. Extended JSON
   types (ObjectId, Date, Int64, Decimal128, Binary, UUID, Timestamp, regex
   and more) survive a round trip unchanged.
+  - A field-by-field mode (the list icon in the editor): a name, a type
+    picker and a value per field, nested objects and arrays that expand in
+    place, add and remove buttons, and `_id` locked when editing.
+  - In the Table view, tap a cell and **Edit** to change one field with
+    `$set` (or remove it with `$unset`), type included.
+- **Bulk update and delete:** from the Documents menu, for every document
+  matching the current filter. Update shows the match count and a
+  before/after preview of the first three documents (simulated on the phone
+  for the common operators, run on the server for pipeline updates); both
+  ask for confirmation.
+- **Import:** JSON (an array, or one document per line, in Extended JSON or
+  shell syntax) or CSV (comma, semicolon, tab or pipe; `a.b` and `a[0]`
+  headers build nested documents) from a file you pick. CSV columns get a
+  detected type you can change or ignore. The file is streamed and inserted
+  in batches of 1,000 with progress, Cancel, and a list of the documents
+  that failed.
 - **Aggregations:** a pipeline builder with stage cards (28 stage types
   with templates), an on/off switch per stage, reordering, a sideways
   preview of each stage's output, a text mode for the whole pipeline,
